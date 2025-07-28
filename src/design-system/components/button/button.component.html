@@ -1,0 +1,7 @@
+<button 
+  [type]="type"
+  (click)="onClick()"
+  class="ds-button__element">
+  <span *ngIf="loading" class="ds-button__loader"></span>
+  <ng-content></ng-content>
+</button> 

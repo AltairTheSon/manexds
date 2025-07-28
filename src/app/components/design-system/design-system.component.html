@@ -1,0 +1,126 @@
+<div class="design-system">
+  <!-- Search and Controls -->
+  <div class="controls">
+    <div class="search-box">
+      <input 
+        type="text" 
+        [(ngModel)]="searchTerm" 
+        (keyup.enter)="onSearch()"
+        placeholder="Search {{ activeTab }}..."
+        class="search-input"
+      >
+      <button (click)="onSearch()" class="search-button">🔍</button>
+      <button (click)="clearSearch()" class="clear-button" *ngIf="searchTerm">✕</button>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button 
+      class="tab-button" 
+      [class.active]="activeTab === 'tokens'"
+      (click)="onTabChange('tokens')"
+    >
+      🎨 Design Tokens
+    </button>
+    <button 
+      class="tab-button" 
+      [class.active]="activeTab === 'components'"
+      (click)="onTabChange('components')"
+    >
+      🧩 Components
+    </button>
+    <button 
+      class="tab-button" 
+      [class.active]="activeTab === 'pages'"
+      (click)="onTabChange('pages')"
+    >
+      📄 Pages
+    </button>
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+    <!-- Loading State -->
+    <div *ngIf="isLoadingTokens || isLoadingComponents || isLoadingPages" class="loading">
+      <div class="spinner"></div>
+      <p>Loading {{ activeTab }}...</p>
+    </div>
+
+    <!-- Tokens Tab -->
+    <div *ngIf="activeTab === 'tokens' && !isLoadingTokens" class="tokens-grid">
+      <div *ngFor="let token of tokens" class="token-card">
+        <div class="token-preview" [style.background-color]="getTokenColorPreview(token)"></div>
+        <div class="token-info">
+          <h4 class="token-name">{{ token.name }}</h4>
+          <p class="token-value">{{ formatTokenValue(token) }}</p>
+          <span class="token-type">{{ token.type }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Components Tab -->
+    <div *ngIf="activeTab === 'components' && !isLoadingComponents" class="components-grid">
+      <div *ngFor="let component of components" class="component-card">
+        <div class="component-preview">
+          <img *ngIf="component.preview" [src]="component.preview" [alt]="component.name" class="preview-image" />
+          <div *ngIf="!component.preview" class="preview-placeholder">{{ getComponentPreview(component) }}</div>
+        </div>
+        <div class="component-info">
+          <h4 class="component-name">{{ component.name }}</h4>
+          <p class="component-type">{{ component.type }}</p>
+          <div class="component-variants" *ngIf="component.variants && component.variants.length > 0">
+            <span class="variant-label">Variants:</span>
+            <span class="variant-count">{{ component.variants.length }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pages Tab -->
+    <div *ngIf="activeTab === 'pages' && !isLoadingPages" class="pages-grid">
+      <div *ngFor="let page of pages" class="page-card">
+        <div class="page-preview">
+          <img *ngIf="page.preview" [src]="page.preview" [alt]="page.name" class="preview-image" />
+          <div *ngIf="!page.preview" class="preview-placeholder">📄 {{ page.name }}</div>
+        </div>
+        <div class="page-info">
+          <h4 class="page-name">{{ page.name }}</h4>
+          <p class="page-type">Page</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div *ngIf="!isLoadingTokens && !isLoadingComponents && !isLoadingPages && 
+                ((activeTab === 'tokens' && tokens.length === 0) || 
+                 (activeTab === 'components' && components.length === 0) || 
+                 (activeTab === 'pages' && pages.length === 0))" 
+         class="empty-state">
+      <p>No {{ activeTab }} found.</p>
+    </div>
+  </div>
+
+  <!-- Pagination -->
+  <div *ngIf="totalPages > 1" class="pagination">
+    <button 
+      (click)="onPageChange(currentPage - 1)" 
+      [disabled]="currentPage === 1"
+      class="page-button"
+    >
+      ← Previous
+    </button>
+    
+    <span class="page-info">
+      Page {{ currentPage }} of {{ totalPages }}
+    </span>
+    
+    <button 
+      (click)="onPageChange(currentPage + 1)" 
+      [disabled]="currentPage === totalPages"
+      class="page-button"
+    >
+      Next →
+    </button>
+  </div>
+</div> 

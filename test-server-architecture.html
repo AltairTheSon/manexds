@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server-Side Architecture Test</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .architecture-diagram {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin: 30px 0;
+        }
+        .old-arch, .new-arch {
+            padding: 20px;
+            border-radius: 8px;
+            border: 2px solid #ddd;
+        }
+        .old-arch {
+            border-color: #dc3545;
+            background: #fff5f5;
+        }
+        .new-arch {
+            border-color: #28a745;
+            background: #f8fff9;
+        }
+        .arch-title {
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .old-arch .arch-title {
+            color: #dc3545;
+        }
+        .new-arch .arch-title {
+            color: #28a745;
+        }
+        .flow-item {
+            background: #f8f9fa;
+            padding: 10px;
+            margin: 8px 0;
+            border-radius: 6px;
+            border-left: 4px solid #007bff;
+        }
+        .flow-item.browser {
+            border-left-color: #007bff;
+        }
+        .flow-item.server {
+            border-left-color: #28a745;
+        }
+        .flow-item.figma {
+            border-left-color: #ff6b35;
+        }
+        .problem {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        .solution {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        .test-buttons {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        .btn-warning {
+            background: #ffc107;
+            color: black;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+        .status.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .status.info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🖥️ Server-Side Architecture Test</h1>
+        <p>This demonstrates the difference between the old localStorage approach and the new server-side architecture.</p>
+
+        <div class="architecture-diagram">
+            <div class="old-arch">
+                <div class="arch-title">❌ Old Architecture (localStorage)</div>
+                <div class="flow-item browser">Browser stores 10,938 tokens + 736 components</div>
+                <div class="flow-item browser">QuotaExceededError when storage is full</div>
+                <div class="flow-item browser">Browser handles all data management</div>
+                <div class="flow-item browser">Limited by 5-10MB localStorage quota</div>
+            </div>
+            
+            <div class="new-arch">
+                <div class="arch-title">✅ New Architecture (Server-Side)</div>
+                <div class="flow-item server">Server stores all Figma data</div>
+                <div class="flow-item browser">Browser only displays what it needs</div>
+                <div class="flow-item server">Pagination and search on server</div>
+                <div class="flow-item browser">No storage limits for browser</div>
+            </div>
+        </div>
+
+        <div class="problem">
+            <h3>🚨 Problem with Old Approach</h3>
+            <p><strong>QuotaExceededError:</strong> "Failed to execute 'setItem' on 'Storage': Setting the value of 'figma-pages_small_chunk_0' exceeded the quota."</p>
+            <ul>
+                <li>Browser localStorage has 5-10MB limit</li>
+                <li>Your Figma data: 10,938 tokens + 736 components</li>
+                <li>Even "small chunks" are too large</li>
+                <li>Browser runs out of storage space</li>
+            </ul>
+        </div>
+
+        <div class="solution">
+            <h3>✅ Solution: Server-Side Architecture</h3>
+            <p><strong>Benefits:</strong></p>
+            <ul>
+                <li><strong>No Browser Storage Limits:</strong> All data stored on server</li>
+                <li><strong>Better Performance:</strong> Browser only loads what it displays</li>
+                <li><strong>Real-time Sync Status:</strong> Live progress updates</li>
+                <li><strong>Pagination & Search:</strong> Efficient data loading</li>
+                <li><strong>Scalable:</strong> Can handle unlimited Figma data</li>
+            </ul>
+        </div>
+
+        <h3>🧪 Test the New Architecture</h3>
+        <div class="test-buttons">
+            <button class="btn btn-primary" onclick="testServerSync()">🔄 Test Server Sync</button>
+            <button class="btn btn-success" onclick="testPagination()">📄 Test Pagination</button>
+            <button class="btn btn-warning" onclick="testSearch()">🔍 Test Search</button>
+            <button class="btn btn-primary" onclick="testSyncStatus()">📊 Test Sync Status</button>
+        </div>
+
+        <div id="test-results"></div>
+
+        <div class="status info">
+            <h4>📋 How It Works</h4>
+            <ol>
+                <li><strong>Browser sends sync command</strong> to server</li>
+                <li><strong>Server fetches data</strong> from Figma API</li>
+                <li><strong>Server stores data</strong> in local files</li>
+                <li><strong>Browser requests data</strong> as needed (paginated)</li>
+                <li><strong>Browser displays</strong> only what's requested</li>
+            </ol>
+        </div>
+
+        <div class="status success">
+            <h4>🎯 Key Advantages</h4>
+            <ul>
+                <li>✅ No more QuotaExceededError</li>
+                <li>✅ Handles unlimited Figma data</li>
+                <li>✅ Better browser performance</li>
+                <li>✅ Real-time sync progress</li>
+                <li>✅ Efficient data loading</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        function showResult(message, type = 'info') {
+            const resultsDiv = document.getElementById('test-results');
+            resultsDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        function testServerSync() {
+            showResult(`
+                <h4>🔄 Server Sync Test</h4>
+                <p><strong>What happens:</strong></p>
+                <ol>
+                    <li>Browser sends POST to /api/mcp/figma/sync</li>
+                    <li>Server starts background sync process</li>
+                    <li>Server fetches data from Figma API</li>
+                    <li>Server stores data in local files</li>
+                    <li>Browser gets sync status updates</li>
+                </ol>
+                <p><strong>Result:</strong> No localStorage quota issues!</p>
+            `, 'success');
+        }
+
+        function testPagination() {
+            showResult(`
+                <h4>📄 Pagination Test</h4>
+                <p><strong>What happens:</strong></p>
+                <ol>
+                    <li>Browser requests: GET /api/mcp/figma/tokens?page=1&limit=20</li>
+                    <li>Server returns only 20 tokens</li>
+                    <li>Browser displays 20 tokens</li>
+                    <li>User clicks "Next" → page=2</li>
+                    <li>Server returns next 20 tokens</li>
+                </ol>
+                <p><strong>Result:</strong> Efficient memory usage!</p>
+            `, 'success');
+        }
+
+        function testSearch() {
+            showResult(`
+                <h4>🔍 Search Test</h4>
+                <p><strong>What happens:</strong></p>
+                <ol>
+                    <li>User types "button" in search</li>
+                    <li>Browser sends: GET /api/mcp/figma/components?search=button</li>
+                    <li>Server filters 736 components server-side</li>
+                    <li>Server returns only matching components</li>
+                    <li>Browser displays filtered results</li>
+                </ol>
+                <p><strong>Result:</strong> Fast search without loading all data!</p>
+            `, 'success');
+        }
+
+        function testSyncStatus() {
+            showResult(`
+                <h4>📊 Sync Status Test</h4>
+                <p><strong>What happens:</strong></p>
+                <ol>
+                    <li>Browser polls: GET /api/mcp/figma/sync-status</li>
+                    <li>Server returns current sync progress</li>
+                    <li>Browser shows real-time progress bar</li>
+                    <li>User sees: "Syncing... 45%"</li>
+                    <li>No UI blocking during sync</li>
+                </ol>
+                <p><strong>Result:</strong> Better user experience!</p>
+            `, 'success');
+        }
+    </script>
+</body>
+</html> 

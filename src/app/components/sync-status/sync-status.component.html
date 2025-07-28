@@ -1,0 +1,45 @@
+<div class="sync-status">
+  <div class="sync-header">
+    <h3>Figma Sync Status</h3>
+    <button class="sync-button" (click)="startSync()" [disabled]="syncStatus.isSyncing">
+      <span *ngIf="!syncStatus.isSyncing">🔄 Sync Now</span>
+      <span *ngIf="syncStatus.isSyncing">⏳ Syncing...</span>
+    </button>
+  </div>
+
+  <div class="sync-info">
+    <div class="status-indicator" [class]="getSyncStatusClass()">
+      <span class="status-text">
+        <span *ngIf="syncStatus.isSyncing" class="spinner">⏳</span>
+        {{ getSyncStatusText() }}
+      </span>
+    </div>
+
+    <!-- Progress bar for syncing -->
+    <div *ngIf="syncStatus.isSyncing" class="progress-container">
+      <div class="progress-bar">
+        <div class="progress-fill" [style.width.%]="syncStatus.syncProgress"></div>
+      </div>
+      <span class="progress-text">{{ syncStatus.syncProgress }}%</span>
+    </div>
+
+    <div class="data-counts">
+      <div class="count-item">
+        <span class="count-label">Tokens:</span>
+        <span class="count-value">{{ syncStatus.dataCounts.tokens }}</span>
+      </div>
+      <div class="count-item">
+        <span class="count-label">Components:</span>
+        <span class="count-value">{{ syncStatus.dataCounts.components }}</span>
+      </div>
+      <div class="count-item">
+        <span class="count-label">Pages:</span>
+        <span class="count-value">{{ syncStatus.dataCounts.pages }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div *ngIf="syncStatus.syncError" class="sync-error">
+    <span class="error-text">❌ {{ syncStatus.syncError }}</span>
+  </div>
+</div> 

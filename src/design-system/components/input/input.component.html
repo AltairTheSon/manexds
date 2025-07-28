@@ -1,0 +1,32 @@
+<div class="ds-input-wrapper">
+  <label *ngIf="label" class="ds-input__label" [for]="inputId">
+    {{ label }}
+    <span *ngIf="required" class="ds-input__required">*</span>
+  </label>
+  
+  <div class="ds-input__container" [class.ds-input--error]="error">
+    <input
+      [id]="inputId"
+      [type]="type"
+      [placeholder]="placeholder"
+      [required]="required"
+      [disabled]="disabled"
+      [readonly]="readonly"
+      [value]="value"
+      (input)="onInput($event)"
+      (focus)="onFocus($event)"
+      (blur)="onBlur($event)"
+      class="ds-input__field"
+      [class.ds-input--sm]="size === 'sm'"
+      [class.ds-input--md]="size === 'md'"
+      [class.ds-input--lg]="size === 'lg'">
+  </div>
+  
+  <div *ngIf="hint && !error" class="ds-input__hint">
+    {{ hint }}
+  </div>
+  
+  <div *ngIf="error" class="ds-input__error">
+    {{ error }}
+  </div>
+</div> 

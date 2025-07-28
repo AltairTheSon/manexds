@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storage Management Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .warning { background-color: #fff3cd; border: 1px solid #ffeaa7; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; }
+        button { padding: 10px 20px; margin: 5px; border: none; border-radius: 5px; cursor: pointer; }
+        .clear-btn { background-color: #dc3545; color: white; }
+        .essential-btn { background-color: #ffc107; color: black; }
+        .info-btn { background-color: #17a2b8; color: white; }
+    </style>
+</head>
+<body>
+    <h1>Storage Management Test</h1>
+    
+    <div id="status"></div>
+    
+    <div>
+        <button class="info-btn" onclick="checkStorageStatus()">Check Storage Status</button>
+        <button class="essential-btn" onclick="clearKeepEssential()">Clear & Keep Essential</button>
+        <button class="clear-btn" onclick="clearAllStorage()">Clear All Storage</button>
+    </div>
+    
+    <div id="output"></div>
+
+    <script>
+        // Simulate the storage management functions
+        function getStorageUsage() {
+            try {
+                let used = 0;
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key) {
+                        const value = localStorage.getItem(key);
+                        if (value) {
+                            used += key.length + value.length;
+                        }
+                    }
+                }
+                
+                const available = 5 * 1024 * 1024; // 5MB estimate
+                const percentage = (used / available) * 100;
+                
+                return { used, available, percentage };
+            } catch (error) {
+                return { used: 0, available: 0, percentage: 0 };
+            }
+        }
+
+        function isStorageFull() {
+            const usage = getStorageUsage();
+            return usage.percentage > 80;
+        }
+
+        function getStorageStatus() {
+            const usage = getStorageUsage();
+            const isFull = isStorageFull();
+            const recommendations = [];
+
+            if (usage.percentage > 90) {
+                recommendations.push('Storage is critically full. Consider clearing old data.');
+            } else if (usage.percentage > 80) {
+                recommendations.push('Storage is getting full. Consider clearing non-essential data.');
+            }
+
+            // Count Figma-related items
+            let figmaItems = 0;
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.includes('figma-')) {
+                    figmaItems++;
+                }
+            }
+
+            if (figmaItems > 100) {
+                recommendations.push('Large number of Figma items detected. Consider using essential-only mode.');
+            }
+
+            return { usage, isFull, recommendations, figmaItems };
+        }
+
+        function clearOldStorageData() {
+            const keysToRemove = [];
+            
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && (key.includes('_chunk_') || key.includes('_small_chunk_') || key.includes('_metadata'))) {
+                    keysToRemove.push(key);
+                }
+            }
+            
+            keysToRemove.forEach(key => {
+                try {
+                    localStorage.removeItem(key);
+                } catch (error) {
+                    console.warn(`Failed to remove old storage key ${key}:`, error);
+                }
+            });
+            
+            return keysToRemove.length;
+        }
+
+        function saveEssentialDataOnly() {
+            // Save only essential metadata
+            const metadata = {
+                lastSync: new Date().toISOString(),
+                fileVersion: null,
+                fileId: 'test-file-id',
+                tokensCount: 50,
+                componentsCount: 25,
+                pagesCount: 10
+            };
+            
+            localStorage.setItem('figma-sync-metadata', JSON.stringify(metadata));
+            
+            // Save only first 50 items of each type
+            const essentialTokens = Array.from({length: 50}, (_, i) => ({
+                id: `token-${i}`,
+                name: `Essential Token ${i}`,
+                type: 'color',
+                value: '#ff0000'
+            }));
+            
+            const essentialComponents = Array.from({length: 25}, (_, i) => ({
+                id: `component-${i}`,
+                name: `Essential Component ${i}`,
+                type: 'component',
+                variants: [],
+                properties: {}
+            }));
+            
+            localStorage.setItem('figma-design-tokens', JSON.stringify(essentialTokens));
+            localStorage.setItem('figma-components', JSON.stringify(essentialComponents));
+        }
+
+        function clearStorageKeepEssential() {
+            try {
+                // Clear all chunked data first
+                const clearedCount = clearOldStorageData();
+                
+                // Save only essential data
+                saveEssentialDataOnly();
+                
+                updateStatus(`Cleared ${clearedCount} old storage entries and kept only essential data`, 'success');
+                checkStorageStatus();
+            } catch (error) {
+                updateStatus(`Error clearing storage: ${error.message}`, 'error');
+            }
+        }
+
+        function clearAllStorage() {
+            try {
+                // Clear all Figma-related keys
+                const keysToRemove = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && (key.includes('figma-') || key.includes('_chunk_') || key.includes('_metadata'))) {
+                        keysToRemove.push(key);
+                    }
+                }
+                
+                keysToRemove.forEach(key => localStorage.removeItem(key));
+                
+                updateStatus(`Cleared all Figma storage data (${keysToRemove.length} items)`, 'success');
+                checkStorageStatus();
+            } catch (error) {
+                updateStatus(`Error clearing storage: ${error.message}`, 'error');
+            }
+        }
+
+        function checkStorageStatus() {
+            const status = getStorageStatus();
+            const output = document.getElementById('output');
+            
+            let statusClass = 'success';
+            if (status.isFull) statusClass = 'warning';
+            if (status.usage.percentage > 90) statusClass = 'error';
+            
+            output.innerHTML = `
+                <div class="status ${statusClass}">
+                    <h3>Storage Status:</h3>
+                    <p><strong>Used:</strong> ${(status.usage.used / 1024 / 1024).toFixed(2)} MB / ${(status.usage.available / 1024 / 1024).toFixed(2)} MB</p>
+                    <p><strong>Usage:</strong> ${status.usage.percentage.toFixed(1)}%</p>
+                    <p><strong>Figma Items:</strong> ${status.figmaItems}</p>
+                    <p><strong>Storage Full:</strong> ${status.isFull ? 'Yes' : 'No'}</p>
+                    
+                    ${status.recommendations.length > 0 ? `
+                        <h4>Recommendations:</h4>
+                        <ul>
+                            ${status.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                        </ul>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function updateStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        // Initialize
+        checkStorageStatus();
+    </script>
+</body>
+</html> 

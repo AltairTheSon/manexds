@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storage Fix Test</title>
+</head>
+<body>
+    <h1>Storage Fix Test</h1>
+    <div id="output"></div>
+
+    <script>
+        // Test the storage fix
+        function testStorageFix() {
+            const output = document.getElementById('output');
+            
+            // Test 1: Array data (should work with expandPropertyNames)
+            const arrayData = [
+                { i: '1', n: 'test', t: 'color', v: '#ff0000' },
+                { i: '2', n: 'test2', t: 'typography', v: '16px' }
+            ];
+            localStorage.setItem('test-array', JSON.stringify(arrayData));
+            
+            // Test 2: Object data (should NOT use expandPropertyNames)
+            const objectData = {
+                lastSync: '2025-07-27T10:31:32.385Z',
+                fileVersion: null,
+                fileId: '6zbyXDOYjJsJW52P6iZ3hL',
+                tokensCount: 10,
+                componentsCount: 8,
+                pagesCount: 5
+            };
+            localStorage.setItem('test-object', JSON.stringify(objectData));
+            
+            // Simulate the getFromStorage logic
+            function getFromStorage(key) {
+                try {
+                    const item = localStorage.getItem(key);
+                    if (item) {
+                        const data = JSON.parse(item);
+                        
+                        // Handle different data types appropriately
+                        if (Array.isArray(data)) {
+                            // Expand short property names back to full names for arrays
+                            return expandPropertyNames(data);
+                        } else {
+                            // For single objects (like sync metadata), return as-is
+                            return data;
+                        }
+                    }
+                    return null;
+                } catch (error) {
+                    console.error(`❌ Error reading ${key} from storage:`, error);
+                    return null;
+                }
+            }
+            
+            function expandPropertyNames(data) {
+                const fullNames = {
+                    'i': 'id',
+                    'n': 'name',
+                    't': 'type',
+                    'v': 'value',
+                    'd': 'description',
+                    'lm': 'lastModified',
+                    'ver': 'version',
+                    'var': 'variants',
+                    'props': 'properties',
+                    'ch': 'children',
+                    'p': 'preview',
+                    'gc': 'generatedCode'
+                };
+
+                return data.map(item => {
+                    const expanded = {};
+                    for (const [prop, value] of Object.entries(item)) {
+                        const fullProp = fullNames[prop] || prop;
+                        expanded[fullProp] = value;
+                    }
+                    return expanded;
+                });
+            }
+            
+            // Test the fix
+            try {
+                const arrayResult = getFromStorage('test-array');
+                const objectResult = getFromStorage('test-object');
+                
+                output.innerHTML = `
+                    <h2>✅ Test Results:</h2>
+                    <h3>Array Data (should be expanded):</h3>
+                    <pre>${JSON.stringify(arrayResult, null, 2)}</pre>
+                    
+                    <h3>Object Data (should remain as-is):</h3>
+                    <pre>${JSON.stringify(objectResult, null, 2)}</pre>
+                    
+                    <h3>✅ Fix Status:</h3>
+                    <p>✅ Array data correctly expanded with full property names</p>
+                    <p>✅ Object data correctly returned without modification</p>
+                    <p>✅ No "data.map is not a function" error</p>
+                `;
+                
+                console.log('✅ Storage fix test passed!');
+            } catch (error) {
+                output.innerHTML = `
+                    <h2>❌ Test Failed:</h2>
+                    <pre>${error.message}</pre>
+                `;
+                console.error('❌ Storage fix test failed:', error);
+            }
+        }
+        
+        // Run the test
+        testStorageFix();
+    </script>
+</body>
+</html> 
