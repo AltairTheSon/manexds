@@ -1,0 +1,234 @@
+<div class="flow-viewer-container">
+  <!-- Header -->
+  <div class="flow-viewer-header">
+    <h2>🎯 Interactive Flow Viewer</h2>
+    <p>Click on pages to view them and interact with elements</p>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="loading" class="loading-state">
+    <div class="spinner"></div>
+    <p>Loading page flows...</p>
+  </div>
+
+  <!-- Error State -->
+  <div *ngIf="error" class="error-state">
+    <p>❌ {{ error }}</p>
+    <button (click)="loadContainers()" class="retry-button">Retry</button>
+  </div>
+
+  <!-- Main Content -->
+  <div *ngIf="!loading && !error" class="flow-viewer-content">
+    <!-- Page Thumbnails Sidebar -->
+    <div class="page-sidebar">
+      <div class="sidebar-header">
+        <h3>📁 Containers ({{ getContainerPages().length }})</h3>
+      </div>
+      
+      <div class="page-stats">
+        <span class="stat">
+          📁 {{ getContainerPages().length }} containers
+        </span>
+        <span class="stat" *ngIf="currentContainer">
+          📄 {{ getIndividualPages().length }} pages in {{ currentContainer.name }}
+        </span>
+      </div>
+
+      <!-- Container Thumbnails -->
+      <div class="page-thumbnails">
+        <div 
+          *ngFor="let container of getContainerPages()" 
+          class="page-thumbnail container"
+          [class.active]="currentContainer?.id === container.id"
+          (click)="selectContainer(container)"
+        >
+          <img 
+            [src]="getPageThumbnail(container)" 
+            [alt]="container.name"
+            class="thumbnail-image"
+          />
+          <div class="page-info">
+            <h4>{{ getPageDisplayName(container) }}</h4>
+            <p>{{ container.individualPagesCount || 0 }} individual pages</p>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Individual Pages (when container is selected) -->
+      <div class="page-thumbnails" *ngIf="currentContainer && getIndividualPages().length > 0">
+        <h4>📄 Pages in {{ currentContainer.name }}</h4>
+        <div 
+          *ngFor="let page of getIndividualPages()" 
+          class="page-thumbnail individual"
+          [class.active]="currentPage?.id === page.id"
+          (click)="selectPage(page)"
+        >
+          <img 
+            [src]="getPageThumbnail(page)" 
+            [alt]="page.name"
+            class="thumbnail-image"
+          />
+          <div class="page-info">
+            <h4>{{ getPageDisplayName(page) }}</h4>
+            <p *ngIf="page.bounds" class="page-dimensions">
+              {{ page.bounds.width }}×{{ page.bounds.height }}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Current Page Viewer -->
+    <div class="page-viewer">
+      <div *ngIf="currentPage" class="current-page">
+        <!-- Page Header -->
+        <div class="page-header">
+          <h3>{{ currentPage.name }}</h3>
+          <div class="page-stats">
+            <span class="stat">
+              🖱️ {{ getClickableElements().length }} clickable
+            </span>
+            <span class="stat">
+              🧩 {{ getComponentInstances().length }} components
+            </span>
+            <span class="stat">
+              🔗 {{ getNavigationElements().length }} navigation
+            </span>
+          </div>
+        </div>
+
+        <!-- Preview Tabs -->
+        <div class="preview-tabs">
+          <button 
+            class="tab-button" 
+            [class.active]="activeTab === 'image'"
+            (click)="setActiveTab('image')"
+          >
+            🖼️ Image Preview
+          </button>
+          <button 
+            class="tab-button" 
+            [class.active]="activeTab === 'html'"
+            (click)="setActiveTab('html')"
+          >
+            🌐 HTML Preview
+          </button>
+        </div>
+
+        <!-- Image Preview Tab -->
+        <div *ngIf="activeTab === 'image'" class="tab-content">
+          <div class="page-preview">
+            <img 
+              [src]="getPageThumbnail(currentPage)" 
+              [alt]="currentPage.name"
+              class="page-image"
+            />
+            
+            <!-- Clickable Elements Overlay -->
+            <div class="clickable-overlay">
+              <div 
+                *ngFor="let element of getClickableElements()" 
+                class="clickable-element"
+                [style.left.px]="element.bounds?.x || 0"
+                [style.top.px]="element.bounds?.y || 0"
+                [style.width.px]="element.bounds?.width || 100"
+                [style.height.px]="element.bounds?.height || 50"
+                (click)="onElementClick(element)"
+                [title]="element.name"
+              >
+                <div class="element-label">{{ element.name }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- HTML Preview Tab -->
+        <div *ngIf="activeTab === 'html'" class="tab-content">
+          <div class="html-preview">
+            <div class="preview-header">
+              <h4>🌐 HTML Preview - {{ currentPage.name }}</h4>
+              <div class="preview-controls">
+                <button class="control-button" (click)="refreshHtmlPreview()">
+                  🔄 Refresh
+                </button>
+                <button class="control-button" (click)="exportHtmlPreview()">
+                  📥 Export HTML
+                </button>
+              </div>
+            </div>
+            
+            <div class="preview-container">
+              <iframe 
+                [src]="getHtmlPreviewUrl()" 
+                class="html-iframe"
+                title="HTML Preview"
+              ></iframe>
+            </div>
+            
+            <div class="preview-info">
+              <p><strong>Preview Info:</strong></p>
+              <ul>
+                <li>📏 Dimensions: {{ currentPage.bounds?.width }}×{{ currentPage.bounds?.height }}</li>
+                <li>🧩 Components: {{ getComponentInstances().length }}</li>
+                <li>🖱️ Interactive Elements: {{ getClickableElements().length }}</li>
+                <li>🔗 Navigation: {{ getNavigationElements().length }}</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Page Details -->
+        <div class="page-details">
+          <div class="detail-section">
+            <h4>🖱️ Clickable Elements</h4>
+            <div class="elements-list">
+              <div 
+                *ngFor="let element of getClickableElements()" 
+                class="element-item"
+                (click)="onElementClick(element)"
+              >
+                <span class="element-name">{{ element.name }}</span>
+                <span class="element-type">{{ element.type }}</span>
+                <span class="element-text" *ngIf="element.text">{{ element.text }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-section">
+            <h4>🧩 Component Instances</h4>
+            <div class="elements-list">
+              <div 
+                *ngFor="let component of getComponentInstances()" 
+                class="element-item"
+              >
+                <span class="element-name">{{ component.name }}</span>
+                <span class="element-type">Component</span>
+                <span class="component-id">ID: {{ component.componentId }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-section">
+            <h4>🔗 Navigation Elements</h4>
+            <div class="elements-list">
+              <div 
+                *ngFor="let nav of getNavigationElements()" 
+                class="element-item"
+                (click)="onElementClick(nav)"
+              >
+                <span class="element-name">{{ nav.name }}</span>
+                <span class="element-type">{{ nav.type }}</span>
+                <span class="element-text" *ngIf="nav.text">{{ nav.text }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- No Page Selected -->
+      <div *ngIf="!currentPage" class="no-page-selected">
+        <p>Select a page from the sidebar to view its details</p>
+      </div>
+    </div>
+  </div>
+</div> 

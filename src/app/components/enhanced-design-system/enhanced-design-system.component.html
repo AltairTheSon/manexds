@@ -1,0 +1,263 @@
+<div class="enhanced-design-system">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-content">
+      <h1>🎨 Enhanced Design System</h1>
+      <p>Advanced token and component management with relationship tracking</p>
+    </div>
+    <div class="header-actions">
+      <button 
+        class="btn btn-primary" 
+        (click)="startEnhancedSync()" 
+        [disabled]="loading">
+        <span *ngIf="loading">🔄 Syncing...</span>
+        <span *ngIf="!loading">🔄 Start Enhanced Sync</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Error Display -->
+  <div *ngIf="error" class="error-banner">
+    <div class="error-content">
+      <span class="error-icon">❌</span>
+      <span class="error-message">{{ error }}</span>
+      <button class="error-dismiss" (click)="error = null">×</button>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="loading" class="loading-overlay">
+    <div class="loading-content">
+      <div class="spinner"></div>
+      <p>Loading enhanced design system data...</p>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-content" *ngIf="!loading">
+    
+    <!-- Filters and Controls -->
+    <div class="controls-section">
+      <div class="filters">
+        <!-- File Selection -->
+        <div class="filter-group">
+          <label>📁 Figma File:</label>
+          <select 
+            [value]="getSelectedFileId()" 
+            (change)="onFileChange($event)">
+            <option *ngFor="let file of figmaFiles" [value]="file.id">
+              {{ getFileTypeIcon(file.type) }} {{ file.name }} ({{ file.type }})
+            </option>
+          </select>
+        </div>
+
+        <!-- Search -->
+        <div class="filter-group">
+          <label>🔍 Search:</label>
+          <input 
+            type="text" 
+            placeholder="Search tokens, components, or categories..."
+            [value]="searchTerm"
+            (input)="onSearchChange($event)">
+        </div>
+
+        <!-- Token Type Filter -->
+        <div class="filter-group" *ngIf="activeTab === 'tokens'">
+          <label>🎨 Token Type:</label>
+          <select 
+            [value]="selectedTokenType" 
+            (change)="onTokenTypeChange($event)">
+            <option *ngFor="let type of tokenTypes" [value]="type.value">
+              {{ type.label }}
+            </option>
+          </select>
+        </div>
+
+        <!-- Token Category Filter -->
+        <div class="filter-group" *ngIf="activeTab === 'tokens'">
+          <label>📂 Token Category:</label>
+          <select 
+            [value]="selectedTokenCategory" 
+            (change)="onTokenCategoryChange($event)">
+            <option *ngFor="let category of tokenCategories" [value]="category.value">
+              {{ category.label }}
+            </option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button 
+        class="tab-btn" 
+        [class.active]="activeTab === 'tokens'"
+        (click)="onTabChange('tokens')">
+        🎨 Tokens ({{ filteredTokens.length }})
+      </button>
+      <button 
+        class="tab-btn" 
+        [class.active]="activeTab === 'components'"
+        (click)="onTabChange('components')">
+        🧩 Components ({{ filteredComponents.length }})
+      </button>
+      <button 
+        class="tab-btn" 
+        [class.active]="activeTab === 'relationships'"
+        (click)="onTabChange('relationships')">
+        🔗 Relationships
+      </button>
+    </div>
+
+    <!-- Tab Content -->
+    <div class="tab-content">
+      
+      <!-- Tokens Tab -->
+      <div *ngIf="activeTab === 'tokens'" class="tokens-tab">
+        <div class="tokens-grid">
+          <div *ngFor="let token of filteredTokens" class="token-card">
+            <div class="token-header">
+              <span class="token-icon">{{ getTokenTypeIcon(token.type) }}</span>
+              <h3 class="token-name">{{ token.name }}</h3>
+              <span class="token-usage" *ngIf="getTokenUsageCount(token) > 0">
+                {{ getTokenUsageCount(token) }} uses
+              </span>
+            </div>
+            
+            <div class="token-preview" *ngIf="token.type === 'color'">
+              <div 
+                class="color-preview" 
+                [style.background-color]="getTokenColorPreview(token)">
+              </div>
+            </div>
+            
+            <div class="token-details">
+              <div class="token-category">
+                <strong>Category:</strong> {{ token.category }}
+              </div>
+              <div class="token-value">
+                <strong>Value:</strong> 
+                <code>{{ token.value }}</code>
+              </div>
+              <div class="token-description" *ngIf="token.description">
+                <strong>Description:</strong> {{ token.description }}
+              </div>
+              <div class="token-file">
+                <strong>File:</strong> {{ getFileNameById(token.fileId) }}
+              </div>
+            </div>
+            
+            <div class="token-actions">
+              <button class="btn btn-sm btn-secondary">
+                View Usage
+              </button>
+              <button class="btn btn-sm btn-primary">
+                Copy Value
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Components Tab -->
+      <div *ngIf="activeTab === 'components'" class="components-tab">
+        <div class="components-grid">
+          <div *ngFor="let component of filteredComponents" class="component-card">
+            <div class="component-header">
+              <span class="component-icon">{{ getComponentTypeIcon(component.type) }}</span>
+              <h3 class="component-name">{{ component.name }}</h3>
+              <span class="component-tokens" *ngIf="getComponentTokenCount(component) > 0">
+                {{ getComponentTokenCount(component) }} tokens
+              </span>
+            </div>
+            
+            <div class="component-details">
+              <div class="component-type">
+                <strong>Type:</strong> {{ component.type }}
+              </div>
+              <div class="component-description" *ngIf="component.description">
+                <strong>Description:</strong> {{ component.description }}
+              </div>
+              <div class="component-file">
+                <strong>File:</strong> {{ getFileNameById(component.fileId) }}
+              </div>
+              <div class="component-dimensions">
+                <strong>Size:</strong> {{ getComponentDimensions(component) }}
+              </div>
+            </div>
+            
+            <div class="component-tokens-list" *ngIf="getComponentTokenCount(component) > 0">
+              <strong>Used Tokens:</strong>
+              <div class="token-types">
+                <span 
+                  *ngFor="let tokenType of getComponentTokenTypes(component)" 
+                  class="token-type-badge">
+                  {{ tokenType }}
+                </span>
+              </div>
+            </div>
+            
+            <div class="component-actions">
+              <button class="btn btn-sm btn-secondary">
+                View Tokens
+              </button>
+              <button class="btn btn-sm btn-primary">
+                Preview
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Relationships Tab -->
+      <div *ngIf="activeTab === 'relationships'" class="relationships-tab">
+        <div class="relationships-content">
+          <div class="relationship-stats">
+            <div class="stat-card">
+              <div class="stat-number">{{ enhancedTokens.length }}</div>
+              <div class="stat-label">Total Tokens</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number">{{ enhancedComponents.length }}</div>
+              <div class="stat-label">Total Components</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number">{{ figmaFiles.length }}</div>
+              <div class="stat-label">Figma Files</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number">
+                {{ getTokensInUseCount() }}
+              </div>
+              <div class="stat-label">Tokens in Use</div>
+            </div>
+          </div>
+          
+          <div class="relationship-visualization">
+            <h3>🔗 Token-Component Relationships</h3>
+            <div class="relationship-grid">
+              <div *ngFor="let token of getFirstTenTokens()" class="relationship-item">
+                <div class="token-info">
+                  <span class="token-icon">{{ getTokenTypeIcon(token.type) }}</span>
+                  <span class="token-name">{{ token.name }}</span>
+                </div>
+                <div class="relationship-arrow">→</div>
+                <div class="component-list">
+                  <div 
+                    *ngFor="let component of getComponentsUsingTokenSlice(token, 3)" 
+                    class="component-item">
+                    <span class="component-icon">{{ getComponentTypeIcon(component.type) }}</span>
+                    <span class="component-name">{{ component.name }}</span>
+                  </div>
+                  <div *ngIf="getComponentsUsingTokenCount(token) > 3" class="more-components">
+                    +{{ getComponentsUsingTokenCount(token) - 3 }} more
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div> 

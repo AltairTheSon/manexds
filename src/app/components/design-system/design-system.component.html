@@ -61,12 +61,97 @@
 
     <!-- Components Tab -->
     <div *ngIf="activeTab === 'components' && !isLoadingComponents" class="components-grid">
+      <!-- Regenerate All Components Button -->
+      <div class="regenerate-all-section">
+        <button 
+          class="regenerate-all-button" 
+          (click)="regenerateAllComponentPreviews()"
+          [disabled]="isRegeneratingAll"
+        >
+          🔄 {{ isRegeneratingAll ? 'Regenerating...' : 'Regenerate All Component Previews' }}
+        </button>
+        <p class="regenerate-all-info">
+          This will clear all cached HTML previews and regenerate them with the latest design tokens.
+        </p>
+      </div>
+      
       <div *ngFor="let component of components" class="component-card">
-        <div class="component-preview">
+        <!-- Component Preview Tabs -->
+        <div class="component-preview-tabs">
+          <button 
+            class="preview-tab-button" 
+            [class.active]="component.activePreviewTab === 'image'"
+            (click)="setComponentPreviewTab(component, 'image')"
+          >
+            🖼️ Image
+          </button>
+          <button 
+            class="preview-tab-button" 
+            [class.active]="component.activePreviewTab === 'html'"
+            (click)="setComponentPreviewTab(component, 'html')"
+          >
+            🌐 HTML
+          </button>
+        </div>
+
+        <!-- Image Preview Tab -->
+        <div *ngIf="component.activePreviewTab === 'image'" class="component-preview">
           <img *ngIf="component.preview" [src]="component.preview" [alt]="component.name" class="preview-image" />
           <div *ngIf="!component.preview" class="preview-placeholder">{{ getComponentPreview(component) }}</div>
         </div>
-        <div class="component-info">
+
+        <!-- HTML Preview Tab -->
+        <div *ngIf="component.activePreviewTab === 'html'" class="component-html-preview">
+          <div class="html-preview-header">
+            <h5>🌐 HTML Preview - {{ component.name }}</h5>
+            <div class="html-preview-controls">
+              <button class="control-button" (click)="refreshComponentHtmlPreview(component)">
+                🔄 Refresh
+              </button>
+              <button class="control-button" (click)="exportComponentHtml(component)">
+                📥 Export
+              </button>
+              <button class="control-button" (click)="generateAngularComponent(component)">
+                ⚡ Generate Angular
+              </button>
+            </div>
+          </div>
+          
+          <div class="html-preview-container">
+            <div *ngIf="!component.htmlPreviewLoaded && component.activePreviewTab === 'html'" class="html-placeholder">
+              <p>Click "Load Preview" to generate HTML preview</p>
+              <button 
+                class="load-preview-button" 
+                (click)="loadComponentHtmlPreview(component)"
+              >
+                🔄 Load Preview
+              </button>
+            </div>
+            <iframe 
+              *ngIf="component.htmlPreviewLoaded && component.activePreviewTab === 'html'"
+              [src]="component.htmlPreviewUrl" 
+              class="component-html-iframe"
+              title="Component HTML Preview"
+              [attr.data-component-id]="component.id"
+            ></iframe>
+          </div>
+          
+          <div class="component-info">
+            <h4 class="component-name">{{ component.name }}</h4>
+            <p class="component-type">{{ component.type }}</p>
+            <div class="component-variants" *ngIf="component.variants && component.variants.length > 0">
+              <span class="variant-label">Variants:</span>
+              <span class="variant-count">{{ component.variants.length }}</span>
+            </div>
+            <div class="component-properties" *ngIf="component.properties">
+              <span class="properties-label">Properties:</span>
+              <span class="properties-count">{{ getComponentPropertiesCount(component) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Component Info (for image tab) -->
+        <div *ngIf="component.activePreviewTab === 'image'" class="component-info">
           <h4 class="component-name">{{ component.name }}</h4>
           <p class="component-type">{{ component.type }}</p>
           <div class="component-variants" *ngIf="component.variants && component.variants.length > 0">

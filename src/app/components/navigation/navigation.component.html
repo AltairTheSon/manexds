@@ -1,0 +1,33 @@
+<nav class="navigation">
+  <div class="nav-container">
+    <div class="nav-header">
+      <h1 class="nav-title">🎨 Figma Integration</h1>
+      <p class="nav-subtitle">Design System & Component Management</p>
+    </div>
+    
+    <div class="nav-menu">
+      <a 
+        *ngFor="let item of navItems" 
+        [routerLink]="item.path" 
+        routerLinkActive="active"
+        class="nav-item"
+        [title]="item.description"
+      >
+        <div class="nav-item-content">
+          <span class="nav-icon">{{ item.label.split(' ')[0] }}</span>
+          <div class="nav-text">
+            <span class="nav-label">{{ item.label.split(' ').slice(1).join(' ') }}</span>
+            <span class="nav-description">{{ item.description }}</span>
+          </div>
+        </div>
+      </a>
+    </div>
+    
+    <div class="nav-footer">
+      <div class="nav-status">
+        <span class="status-indicator online"></span>
+        <span class="status-text">Connected to Figma</span>
+      </div>
+    </div>
+  </div>
+</nav> 

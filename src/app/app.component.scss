@@ -1,180 +1,23 @@
-// Design System App Styles
-.design-system-app {
+// App Container Styles
+.app-container {
+  display: flex;
   min-height: 100vh;
-  background: #f8f9fa;
-}
-
-.app-header {
-  background: #fff;
-  border-bottom: 1px solid #e9ecef;
-  padding: 1rem 0;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-
-  .container {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 0 1rem;
-  }
-
-  .app-title {
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: #212529;
-    margin: 0;
-  }
-
-  .app-nav {
-    display: flex;
-    gap: 2rem;
-
-    .nav-link {
-      color: #6c757d;
-      text-decoration: none;
-      font-weight: 500;
-      transition: color 0.2s ease;
-
-      &:hover {
-        color: #007bff;
-      }
-
-      &.active {
-        color: #007bff;
-      }
-    }
-  }
+  background: #f8fafc;
 }
 
 .app-main {
-  padding: 2rem 0;
-
-  .container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 0 1rem;
-  }
+  flex: 1;
+  margin-left: 280px;
+  padding: 2rem;
+  background: #f8fafc;
+  min-height: 100vh;
+  overflow-y: auto;
 }
 
-// Responsive Design
+// Responsive design
 @media (max-width: 768px) {
-  .app-header {
-    .container {
-      flex-direction: column;
-      gap: 1rem;
-    }
-
-    .app-nav {
-      gap: 1rem;
-    }
+  .app-main {
+    margin-left: 0;
+    padding: 1rem;
   }
-}
-
-.design-system-showcase {
-  h2 {
-    font-size: var(--ds-font-size-3xl);
-    font-weight: var(--ds-font-weight-semibold);
-    margin-bottom: var(--ds-space-8);
-    color: var(--ds-gray-900);
-  }
-}
-
-.showcase-section {
-  margin-bottom: var(--ds-space-12);
-  padding: var(--ds-space-8);
-  background: white;
-  border-radius: var(--ds-radius-lg);
-  box-shadow: var(--ds-shadow-sm);
-
-  h3 {
-    font-size: var(--ds-font-size-2xl);
-    font-weight: var(--ds-font-weight-semibold);
-    margin-bottom: var(--ds-space-6);
-    color: var(--ds-gray-800);
-  }
-}
-
-// Color Grid
-.color-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: var(--ds-space-4);
-}
-
-.color-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--ds-space-2);
-
-  span {
-    font-size: var(--ds-font-size-sm);
-    font-weight: var(--ds-font-weight-medium);
-    color: var(--ds-gray-600);
-  }
-}
-
-.color-swatch {
-  width: 80px;
-  height: 80px;
-  border-radius: var(--ds-radius-md);
-  border: 2px solid var(--ds-gray-200);
-
-  &.primary-50 { background-color: var(--ds-primary-50); }
-  &.primary-500 { background-color: var(--ds-primary-500); }
-  &.primary-900 { background-color: var(--ds-primary-900); }
-  &.gray-50 { background-color: var(--ds-gray-50); }
-  &.gray-500 { background-color: var(--ds-gray-500); }
-  &.gray-900 { background-color: var(--ds-gray-900); }
-}
-
-// Typography Examples
-.typography-examples {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ds-space-4);
-
-  h1, h2, h3, h4 {
-    margin: 0;
-    color: var(--ds-gray-900);
-  }
-
-  p {
-    margin: 0;
-    color: var(--ds-gray-700);
-  }
-
-  .text-4xl { font-size: var(--ds-font-size-4xl); font-weight: var(--ds-font-weight-bold); }
-  .text-3xl { font-size: var(--ds-font-size-3xl); font-weight: var(--ds-font-weight-semibold); }
-  .text-2xl { font-size: var(--ds-font-size-2xl); font-weight: var(--ds-font-weight-semibold); }
-  .text-xl { font-size: var(--ds-font-size-xl); font-weight: var(--ds-font-weight-medium); }
-  .text-base { font-size: var(--ds-font-size-base); font-weight: var(--ds-font-weight-normal); }
-  .text-sm { font-size: var(--ds-font-size-sm); font-weight: var(--ds-font-weight-normal); }
-  .text-xs { font-size: var(--ds-font-size-xs); font-weight: var(--ds-font-weight-normal); }
-}
-
-// Button Examples
-.button-examples {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ds-space-4);
-}
-
-// Input Examples
-.input-examples {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ds-space-6);
-  max-width: 400px;
-}
-
-// Card Examples
-.card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: var(--ds-space-6);
 } 

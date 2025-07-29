@@ -5,6 +5,10 @@ const fs = require('fs');
 const path = require('path');
 const config = require('./config');
 
+// Enhanced services
+const EnhancedTokenExtractor = require('./services/enhanced-token-extractor');
+const EnhancedComponentExtractor = require('./services/enhanced-component-extractor');
+
 /**
  * MCP Figma Server
  * Handles Figma API calls and provides endpoints for Angular app
@@ -20,22 +24,48 @@ class McpFigmaServer {
     this.watchInterval = null;
     this.lastFileVersion = null;
     
+    // Enhanced services
+    this.tokenExtractor = new EnhancedTokenExtractor(config);
+    this.componentExtractor = new EnhancedComponentExtractor(config, this.tokenExtractor);
+    
     // Sync state tracking
     this.isSyncing = false;
     this.syncProgress = 0;
     this.syncError = null;
     this.lastSyncTime = null;
     
+    // Auto-sync state tracking
+    this.autoSyncEnabled = config.autoSync.enabled;
+    this.autoSyncInterval = config.autoSync.interval;
+    this.lastAutoSync = null;
+    this.autoSyncError = null;
+    
+    // Rate limiting tracking
+    this.apiCallsThisHour = 0;
+    this.lastApiReset = Date.now();
+    this.maxApiCallsPerHour = config.autoSync.maxApiCallsPerHour;
+    
+    // Cache validation
+    this.cacheValidDuration = config.autoSync.cacheValidDuration;
+    this.lastCacheValidation = null;
+    
     // Local storage paths
     this.storageDir = path.join(__dirname, 'storage');
     this.cacheFile = path.join(this.storageDir, 'figma-cache.json');
     this.metadataFile = path.join(this.storageDir, 'sync-metadata.json');
+    this.htmlPreviewCacheFile = path.join(this.storageDir, 'html-preview-cache.json');
+    this.enhancedCacheFile = path.join(this.storageDir, 'enhanced-figma-cache.json');
+    
+    // Load persistent API call tracking (after storageDir is set)
+    this.loadApiCallTracking();
     
     // Ensure storage directory exists
     this.ensureStorageDirectory();
     
     // Load cached data on startup
     this.loadCachedData();
+    this.loadHtmlPreviewCache();
+    this.loadEnhancedCachedData();
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -80,6 +110,89 @@ class McpFigmaServer {
     }
   }
 
+  loadEnhancedCachedData() {
+    try {
+      if (fs.existsSync(this.enhancedCacheFile)) {
+        const enhancedData = JSON.parse(fs.readFileSync(this.enhancedCacheFile, 'utf8'));
+        
+        // Load enhanced tokens
+        if (enhancedData.tokens) {
+          this.enhancedTokens = enhancedData.tokens;
+          console.log('🎨 Loaded enhanced tokens:', this.enhancedTokens.length);
+        }
+        
+        // Load enhanced components
+        if (enhancedData.components) {
+          this.enhancedComponents = enhancedData.components;
+          console.log('🧩 Loaded enhanced components:', this.enhancedComponents.length);
+        }
+        
+        // Load files data
+        if (enhancedData.files) {
+          this.enhancedFiles = enhancedData.files;
+          console.log('📁 Loaded enhanced files:', this.enhancedFiles.length);
+        }
+        
+        console.log('📦 Loaded enhanced cached data');
+      } else {
+        this.enhancedTokens = [];
+        this.enhancedComponents = [];
+        this.enhancedFiles = [];
+        console.log('📦 No enhanced cache found, starting fresh');
+      }
+    } catch (error) {
+      console.error('❌ Error loading enhanced cached data:', error);
+      this.enhancedTokens = [];
+      this.enhancedComponents = [];
+      this.enhancedFiles = [];
+    }
+  }
+
+  loadHtmlPreviewCache() {
+    try {
+      if (fs.existsSync(this.htmlPreviewCacheFile)) {
+        const cacheData = JSON.parse(fs.readFileSync(this.htmlPreviewCacheFile, 'utf8'));
+        this.htmlPreviewCache = new Map(Object.entries(cacheData));
+        console.log('🌐 Loaded HTML preview cache:', this.htmlPreviewCache.size, 'items');
+      } else {
+        this.htmlPreviewCache = new Map();
+        console.log('🌐 Initialized empty HTML preview cache');
+      }
+    } catch (error) {
+      console.error('❌ Error loading HTML preview cache:', error);
+      this.htmlPreviewCache = new Map();
+    }
+  }
+
+  saveHtmlPreviewCache() {
+    try {
+      const cacheData = Object.fromEntries(this.htmlPreviewCache);
+      fs.writeFileSync(this.htmlPreviewCacheFile, JSON.stringify(cacheData, null, 2));
+      console.log('💾 Saved HTML preview cache:', this.htmlPreviewCache.size, 'items');
+    } catch (error) {
+      console.error('❌ Error saving HTML preview cache:', error);
+    }
+  }
+
+  clearComponentHtmlPreviewCache(componentId) {
+    // Remove cached HTML preview for a specific component
+    const keysToRemove = [];
+    for (const [key, value] of this.htmlPreviewCache.entries()) {
+      if (key.startsWith(componentId + '_')) {
+        keysToRemove.push(key);
+      }
+    }
+    
+    keysToRemove.forEach(key => {
+      this.htmlPreviewCache.delete(key);
+    });
+    
+    if (keysToRemove.length > 0) {
+      console.log(`🗑️ Cleared HTML preview cache for component: ${componentId}`);
+      this.saveHtmlPreviewCache();
+    }
+  }
+
   saveCachedData() {
     try {
       const cacheData = {
@@ -104,6 +217,22 @@ class McpFigmaServer {
       console.log('💾 Saved cached data to disk');
     } catch (error) {
       console.error('❌ Error saving cached data:', error);
+    }
+  }
+
+  saveEnhancedCachedData() {
+    try {
+      const enhancedDataToSave = {
+        tokens: this.enhancedTokens || [],
+        components: this.enhancedComponents || [],
+        files: this.enhancedFiles || [],
+        lastUpdated: new Date().toISOString()
+      };
+      
+      fs.writeFileSync(this.enhancedCacheFile, JSON.stringify(enhancedDataToSave, null, 2));
+      console.log('💾 Saved enhanced cached data to file');
+    } catch (error) {
+      console.error('❌ Error saving enhanced cached data:', error);
     }
   }
 
@@ -153,13 +282,78 @@ class McpFigmaServer {
       }
     });
 
+    // Enhanced sync endpoint
+    this.app.post('/api/mcp/figma/enhanced/sync', async (req, res) => {
+      try {
+        const { syncType = 'full' } = req.body;
+        
+        console.log(`🔄 Starting enhanced sync: ${syncType}`);
+        
+        // Start enhanced sync in background
+        this.startEnhancedSync(syncType);
+        
+        res.json({ 
+          success: true, 
+          message: 'Enhanced sync started on server',
+          syncId: Date.now().toString(),
+          syncType 
+        });
+      } catch (error) {
+        console.error('Error starting enhanced sync:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Delta sync endpoint
+    this.app.post('/api/mcp/figma/delta-sync', async (req, res) => {
+      try {
+        console.log('🔄 Starting delta sync...');
+        
+        // Start delta sync in background
+        this.startServerSideSync('delta');
+        
+        res.json({ 
+          success: true, 
+          message: 'Delta sync started on server',
+          syncId: Date.now().toString(),
+          syncType: 'delta'
+        });
+      } catch (error) {
+        console.error('Error starting delta sync:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
     // Get sync status
     this.app.get('/api/mcp/figma/sync-status', (req, res) => {
       res.json({
         isSyncing: this.isSyncing,
         syncProgress: this.syncProgress,
+        syncDetails: this.syncDetails || {
+          phase: 'Idle',
+          current: 0,
+          total: 0,
+          message: 'Ready'
+        },
         lastSyncTime: this.lastSyncTime,
         syncError: this.syncError,
+        autoSyncEnabled: this.autoSyncEnabled,
+        lastAutoSync: this.lastAutoSync,
+        autoSyncInterval: this.autoSyncInterval,
+        developmentMode: config.development.disableAutoSync,
+        canEnableAutoSync: !config.development.disableAutoSync,
+        apiUsage: {
+          callsThisHour: this.apiCallsThisHour,
+          maxCallsPerHour: this.maxApiCallsPerHour,
+          remainingCalls: Math.max(0, this.maxApiCallsPerHour - this.apiCallsThisHour),
+          lastReset: this.lastApiReset,
+          canMakeCalls: this.canMakeApiCall()
+        },
+        cacheStatus: {
+          isValid: !this.isCacheExpired(),
+          lastValidation: this.lastCacheValidation,
+          validDuration: this.cacheValidDuration
+        },
         dataCounts: {
           tokens: this.cachedTokens.length,
           components: this.cachedComponents.length,
@@ -309,60 +503,377 @@ class McpFigmaServer {
       }
     });
 
-    // Get design tokens
+    // Get design tokens (always return cached data if available)
     this.app.get('/api/mcp/figma/tokens', async (req, res) => {
       try {
-        // Return cached data if available and no Figma connection required
-        if (this.cachedTokens.length > 0 && !this.figmaToken) {
+        // Always return cached data if available
+        if (this.cachedTokens.length > 0) {
           console.log('📦 Returning cached tokens:', this.cachedTokens.length);
           return res.json(this.cachedTokens);
         }
         
-        const tokens = await this.extractDesignTokens();
-        this.cachedTokens = tokens;
-        this.saveCachedData();
-        res.json(tokens);
+        // Only extract from Figma if no cached data and Figma connection is available
+        if (this.figmaToken) {
+          console.log('🔄 No cached tokens found, extracting from Figma...');
+          const tokens = await this.extractDesignTokens();
+          this.cachedTokens = tokens;
+          this.saveCachedData();
+          res.json(tokens);
+        } else {
+          res.json([]);
+        }
       } catch (error) {
-        console.error('Error extracting design tokens:', error);
+        console.error('Error getting design tokens:', error);
         res.status(500).json({ error: error.message });
       }
     });
 
-    // Get components
+    // Get components (always return cached data if available)
     this.app.get('/api/mcp/figma/components', async (req, res) => {
       try {
-        // Return cached data if available and no Figma connection required
-        if (this.cachedComponents.length > 0 && !this.figmaToken) {
+        // Always return cached data if available
+        if (this.cachedComponents.length > 0) {
           console.log('📦 Returning cached components:', this.cachedComponents.length);
           return res.json(this.cachedComponents);
         }
         
-        const components = await this.extractComponents();
-        this.cachedComponents = components;
-        this.saveCachedData();
-        res.json(components);
+        // Only extract from Figma if no cached data and Figma connection is available
+        if (this.figmaToken) {
+          console.log('🔄 No cached components found, extracting from Figma...');
+          const components = await this.extractComponents();
+          this.cachedComponents = components;
+          this.saveCachedData();
+          res.json(components);
+        } else {
+          res.json([]);
+        }
       } catch (error) {
-        console.error('Error extracting components:', error);
+        console.error('Error getting components:', error);
         res.status(500).json({ error: error.message });
       }
     });
 
-    // Get pages
+    // Enhanced API endpoints
+    // Get enhanced design tokens
+    this.app.get('/api/mcp/figma/enhanced/tokens', (req, res) => {
+      res.json(this.enhancedTokens || []);
+    });
+
+    // Get enhanced tokens by type
+    this.app.get('/api/mcp/figma/enhanced/tokens/:type', (req, res) => {
+      const { type } = req.params;
+      const tokens = this.enhancedTokens || [];
+      const filteredTokens = tokens.filter(token => token.type === type);
+      res.json(filteredTokens);
+    });
+
+    // Get enhanced tokens by category
+    this.app.get('/api/mcp/figma/enhanced/tokens/category/:category', (req, res) => {
+      const { category } = req.params;
+      const tokens = this.enhancedTokens || [];
+      const filteredTokens = tokens.filter(token => token.category === category);
+      res.json(filteredTokens);
+    });
+
+    // Get enhanced components
+    this.app.get('/api/mcp/figma/enhanced/components', (req, res) => {
+      res.json(this.enhancedComponents || []);
+    });
+
+    // Get enhanced component with token usage
+    this.app.get('/api/mcp/figma/enhanced/components/:componentId', (req, res) => {
+      const { componentId } = req.params;
+      const component = (this.enhancedComponents || []).find(c => c.id === componentId);
+      
+      if (component) {
+        res.json(component);
+      } else {
+        res.status(404).json({ error: 'Component not found' });
+      }
+    });
+
+    // Get components using a specific token
+    this.app.get('/api/mcp/figma/enhanced/tokens/:tokenId/components', (req, res) => {
+      const { tokenId } = req.params;
+      const components = this.enhancedComponents || [];
+      const usingComponents = components.filter(component => {
+        const allTokens = component.getUsedTokenIds ? component.getUsedTokenIds() : [];
+        return allTokens.includes(tokenId);
+      });
+      res.json(usingComponents);
+    });
+
+    // Get enhanced Figma files
+    this.app.get('/api/mcp/figma/files', (req, res) => {
+      res.json(this.enhancedFiles || []);
+    });
+
+    // Get pages (always return cached data if available)
     this.app.get('/api/mcp/figma/pages', async (req, res) => {
       try {
-        // Return cached data if available and no Figma connection required
-        if (this.cachedPages.length > 0 && !this.figmaToken) {
+        // Always return cached data if available
+        if (this.cachedPages.length > 0) {
           console.log('📦 Returning cached pages:', this.cachedPages.length);
           return res.json(this.cachedPages);
         }
         
-        const pages = await this.extractPages();
-        this.cachedPages = pages;
-        this.saveCachedData();
-        res.json(pages);
+        // Only extract from Figma if no cached data and Figma connection is available
+        if (this.figmaToken) {
+          console.log('🔄 No cached pages found, extracting from Figma...');
+          const pages = await this.extractPages();
+          this.cachedPages = pages;
+          this.saveCachedData();
+          res.json(pages);
+        } else {
+          res.json([]);
+        }
       } catch (error) {
-        console.error('Error extracting pages:', error);
+        console.error('Error getting pages:', error);
         res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Get page flow data for interactive viewer - returns only containers
+    this.app.get('/api/mcp/figma/page-flows', async (req, res) => {
+      try {
+        if (this.cachedPages.length > 0) {
+          console.log('📦 Returning container data:', this.cachedPages.length);
+          
+          const containers = [];
+          
+          // Process each page as a container
+          for (const page of this.cachedPages) {
+            console.log(`Processing container: ${page.name} (${page.type})`);
+            
+            // Extract individual pages from this container
+            const individualPages = this.extractIndividualPagesFromContainer(page);
+            
+            // Add the container with its individual pages count
+            containers.push({
+              id: page.id,
+              name: page.name,
+              type: page.type,
+              preview: page.preview,
+              isContainer: true,
+              individualPagesCount: individualPages.length,
+              lastModified: page.lastModified || new Date().toISOString()
+            });
+          }
+          
+          console.log(`📁 Total containers: ${containers.length}`);
+          return res.json(containers);
+        }
+        
+        res.json([]);
+      } catch (error) {
+        console.error('Error getting page flows:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    // Get individual pages for a specific container
+    this.app.get('/api/mcp/figma/container/:containerId/pages', async (req, res) => {
+      try {
+        const containerId = req.params.containerId;
+        
+        if (!this.cachedPages || this.cachedPages.length === 0) {
+          return res.json([]);
+        }
+        
+        const container = this.cachedPages.find(page => page.id === containerId);
+        if (!container) {
+          return res.status(404).json({ error: 'Container not found' });
+        }
+        
+        const individualPages = this.extractIndividualPagesFromContainer(container);
+        console.log(`📄 Found ${individualPages.length} individual pages in container "${container.name}"`);
+        
+        return res.json(individualPages);
+      } catch (error) {
+        console.error('Error getting container pages:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // HTML Preview endpoint
+    this.app.get('/api/mcp/figma/html-preview/:pageId', async (req, res) => {
+      try {
+        const { pageId } = req.params;
+        console.log(`🌐 Generating HTML preview for page: ${pageId}`);
+        
+        // Find the page in all containers
+        let targetPage = null;
+        for (const container of this.cachedPages) {
+          const individualPages = this.extractIndividualPagesFromContainer(container);
+          const foundPage = individualPages.find(page => page.id === pageId);
+          if (foundPage) {
+            targetPage = foundPage;
+            break;
+          }
+        }
+        
+        if (!targetPage) {
+          return res.status(404).json({ error: 'Page not found' });
+        }
+        
+        // Generate HTML preview
+        const htmlPreview = this.generateHtmlPreview(targetPage);
+        
+        res.setHeader('Content-Type', 'text/html');
+        res.send(htmlPreview);
+      } catch (error) {
+        console.error('❌ Error generating HTML preview:', error);
+        res.status(500).json({ error: 'Failed to generate HTML preview' });
+      }
+    });
+
+    // HTML Preview export endpoint
+    this.app.get('/api/mcp/figma/html-preview/:pageId/export', async (req, res) => {
+      try {
+        const { pageId } = req.params;
+        console.log(`📥 Exporting HTML preview for page: ${pageId}`);
+        
+        // Find the page in all containers
+        let targetPage = null;
+        for (const container of this.cachedPages) {
+          const individualPages = this.extractIndividualPagesFromContainer(container);
+          const foundPage = individualPages.find(page => page.id === pageId);
+          if (foundPage) {
+            targetPage = foundPage;
+            break;
+          }
+        }
+        
+        if (!targetPage) {
+          return res.status(404).json({ error: 'Page not found' });
+        }
+        
+        // Generate HTML preview
+        const htmlPreview = this.generateHtmlPreview(targetPage);
+        
+        // Set headers for download
+        res.setHeader('Content-Type', 'text/html');
+        res.setHeader('Content-Disposition', `attachment; filename="${targetPage.name}-preview.html"`);
+        res.send(htmlPreview);
+      } catch (error) {
+        console.error('❌ Error exporting HTML preview:', error);
+        res.status(500).json({ error: 'Failed to export HTML preview' });
+      }
+    });
+
+    // Component HTML Preview endpoint
+    this.app.get('/api/mcp/figma/component-html-preview/:componentId', async (req, res) => {
+      try {
+        const { componentId } = req.params;
+        // Decode the component ID to handle URL encoding
+        const decodedComponentId = decodeURIComponent(componentId);
+        console.log(`🌐 Generating HTML preview for component: ${decodedComponentId}`);
+        
+        // Find the component in cached data
+        const component = this.cachedComponents.find(comp => comp.id === decodedComponentId);
+        if (!component) {
+          console.log(`❌ Component not found: ${decodedComponentId}`);
+          console.log(`📋 Total cached components: ${this.cachedComponents.length}`);
+          console.log(`📋 Available component IDs:`, this.cachedComponents.slice(0, 5).map(c => ({ id: c.id, name: c.name })));
+          return res.status(404).json({ error: 'Component not found' });
+        }
+        
+        // Generate HTML preview using design tokens
+        const htmlPreview = this.generateComponentHtmlPreview(component);
+        
+        res.setHeader('Content-Type', 'text/html');
+        res.send(htmlPreview);
+      } catch (error) {
+        console.error('❌ Error generating component HTML preview:', error);
+        res.status(500).json({ error: 'Failed to generate component HTML preview' });
+      }
+    });
+
+    // Component HTML Preview export endpoint
+    this.app.get('/api/mcp/figma/component-html-preview/:componentId/export', async (req, res) => {
+      try {
+        const { componentId } = req.params;
+        // Decode the component ID to handle URL encoding
+        const decodedComponentId = decodeURIComponent(componentId);
+        console.log(`📥 Exporting component HTML preview for: ${decodedComponentId}`);
+        
+        // Find the component in cached data
+        const component = this.cachedComponents.find(comp => comp.id === decodedComponentId);
+        if (!component) {
+          console.log(`❌ Component not found: ${decodedComponentId}`);
+          return res.status(404).json({ error: 'Component not found' });
+        }
+        
+        // Generate HTML preview using design tokens
+        const htmlPreview = this.generateComponentHtmlPreview(component);
+        
+        // Set headers for download
+        res.setHeader('Content-Type', 'text/html');
+        res.setHeader('Content-Disposition', `attachment; filename="${component.name}-component.html"`);
+        res.send(htmlPreview);
+      } catch (error) {
+        console.error('❌ Error exporting component HTML preview:', error);
+        res.status(500).json({ error: 'Failed to export component HTML preview' });
+      }
+    });
+
+    // Clear component HTML preview cache endpoint
+    this.app.delete('/api/mcp/figma/component-html-preview/:componentId/cache', async (req, res) => {
+      try {
+        console.log('🗑️ DELETE request received for component cache clearing');
+        const { componentId } = req.params;
+        // Decode the component ID to handle URL encoding
+        const decodedComponentId = decodeURIComponent(componentId);
+        console.log(`🗑️ Clearing HTML preview cache for component: ${decodedComponentId}`);
+        
+        // Clear the cache for this component
+        this.clearComponentHtmlPreviewCache(decodedComponentId);
+        
+        res.json({ success: true, message: 'Cache cleared successfully' });
+      } catch (error) {
+        console.error('❌ Error clearing component HTML preview cache:', error);
+        res.status(500).json({ error: 'Failed to clear cache' });
+      }
+    });
+
+    // Clear all component HTML preview caches endpoint
+    this.app.delete('/api/mcp/figma/component-html-preview/cache/all', async (req, res) => {
+      try {
+        console.log(`🗑️ DELETE request received for clearing all component caches`);
+        
+        // Clear all component caches
+        this.htmlPreviewCache.clear();
+        this.saveHtmlPreviewCache();
+        
+        res.json({ success: true, message: 'All component caches cleared successfully' });
+      } catch (error) {
+        console.error('❌ Error clearing all component HTML preview caches:', error);
+        res.status(500).json({ error: 'Failed to clear all caches' });
+      }
+    });
+
+    // Test endpoint to verify DELETE requests work
+    this.app.delete('/api/mcp/figma/test-delete', async (req, res) => {
+      console.log('🧪 Test DELETE endpoint hit');
+      res.json({ success: true, message: 'DELETE endpoint working' });
+    });
+
+    // Debug endpoint to list available components
+    this.app.get('/api/mcp/figma/debug/components', async (req, res) => {
+      try {
+        console.log(`🔍 Debug: Listing ${this.cachedComponents.length} components`);
+        const componentList = this.cachedComponents.slice(0, 10).map(comp => ({
+          id: comp.id,
+          name: comp.name,
+          type: comp.type
+        }));
+        res.json({
+          total: this.cachedComponents.length,
+          components: componentList
+        });
+      } catch (error) {
+        console.error('❌ Error listing components:', error);
+        res.status(500).json({ error: 'Failed to list components' });
       }
     });
 
@@ -472,62 +983,15 @@ class McpFigmaServer {
         console.log('Figma token:', this.figmaToken ? 'Present' : 'Not configured');
         console.log('File ID:', this.fileId);
 
-        // If no Figma connection, return demo data
+        // If no Figma connection, return error
         if (!this.figmaToken || !this.fileId) {
-          console.log('🎭 Returning demo data (no Figma connection)');
-          
-          // Return demo data for testing
-          const demoData = {
-            tokens: [
-              {
-                id: 'demo-color-primary',
-                name: 'Primary Color',
-                type: 'color',
-                value: '#3b82f6',
-                description: 'Primary brand color'
-              },
-              {
-                id: 'demo-color-secondary',
-                name: 'Secondary Color',
-                type: 'color',
-                value: '#6b7280',
-                description: 'Secondary brand color'
-              },
-              {
-                id: 'demo-spacing-sm',
-                name: 'Spacing Small',
-                type: 'spacing',
-                value: '8px',
-                description: 'Small spacing unit'
-              }
-            ],
-            components: [
-              {
-                id: 'demo-button',
-                name: 'Button',
-                type: 'component',
-                variants: ['primary', 'secondary'],
-                lastModified: new Date().toISOString()
-              },
-              {
-                id: 'demo-card',
-                name: 'Card',
-                type: 'component',
-                variants: ['default', 'elevated'],
-                lastModified: new Date().toISOString()
-              }
-            ],
-            pages: [
-              {
-                id: 'demo-page-1',
-                name: 'Home Page',
-                type: 'page',
-                lastModified: new Date().toISOString()
-              }
-            ]
-          };
-
-          res.json(demoData);
+          console.log('❌ No Figma connection configured');
+          res.status(400).json({ 
+            error: 'Figma connection not configured. Please set FIGMA_ACCESS_TOKEN and FIGMA_FILE_ID in your .env file.',
+            tokens: [],
+            components: [],
+            pages: []
+          });
           return;
         }
 
@@ -753,6 +1217,56 @@ export class ${componentId.replace(/[^a-zA-Z0-9]/g, '')}Component {
         res.status(500).json({ error: error.message });
       }
     });
+
+    // Auto-sync endpoints
+    this.app.get('/api/mcp/figma/auto-sync', (req, res) => {
+      try {
+        const response = {
+          enabled: this.autoSyncEnabled,
+          interval: this.autoSyncInterval,
+          lastAutoSync: this.lastAutoSync,
+          error: this.autoSyncError,
+          canEnable: !config.development.disableAutoSync,
+          developmentMode: config.development.disableAutoSync,
+          nextSync: this.lastAutoSync ? new Date(Date.parse(this.lastAutoSync) + this.autoSyncInterval).toISOString() : null
+        };
+        res.json(response);
+      } catch (error) {
+        console.error('Error getting auto-sync status:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    this.app.post('/api/mcp/figma/auto-sync', (req, res) => {
+      try {
+        const { enabled, interval } = req.body;
+        
+        if (enabled !== undefined) {
+          this.autoSyncEnabled = enabled;
+          console.log(`🤖 Auto-sync ${enabled ? 'enabled' : 'disabled'}`);
+          
+          if (enabled) {
+            this.startAutoSync();
+          } else {
+            this.stopAutoSync();
+          }
+        }
+        
+        if (interval !== undefined) {
+          this.autoSyncInterval = Math.max(interval, config.autoSync.minInterval);
+          console.log(`⏱️ Auto-sync interval set to ${this.autoSyncInterval}ms`);
+        }
+        
+        res.json({
+          success: true,
+          enabled: this.autoSyncEnabled,
+          interval: this.autoSyncInterval
+        });
+      } catch (error) {
+        console.error('Error updating auto-sync:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
   }
 
   async makeFigmaRequest(endpoint) {
@@ -792,92 +1306,18 @@ export class ${componentId.replace(/[^a-zA-Z0-9]/g, '')}Component {
     });
   }
 
+  // Enhanced Figma request with rate limiting and retry logic
+  async makeFigmaRequestWithRateLimit(endpoint) {
+    return this.makeFigmaRequestWithRetry(endpoint);
+  }
+
   async extractDesignTokens() {
     if (!this.figmaToken || !this.fileId) {
-      console.log('🎭 Returning demo design tokens (no Figma connection)');
-      return [
-        {
-          id: 'demo-color-primary',
-          name: 'Primary Color',
-          type: 'color',
-          value: '#3b82f6',
-          description: 'Primary brand color'
-        },
-        {
-          id: 'demo-color-secondary',
-          name: 'Secondary Color',
-          type: 'color',
-          value: '#6b7280',
-          description: 'Secondary brand color'
-        },
-        {
-          id: 'demo-color-success',
-          name: 'Success Color',
-          type: 'color',
-          value: '#10b981',
-          description: 'Success state color'
-        },
-        {
-          id: 'demo-color-error',
-          name: 'Error Color',
-          type: 'color',
-          value: '#ef4444',
-          description: 'Error state color'
-        },
-        {
-          id: 'demo-spacing-xs',
-          name: 'Spacing XS',
-          type: 'spacing',
-          value: '4px',
-          description: 'Extra small spacing'
-        },
-        {
-          id: 'demo-spacing-sm',
-          name: 'Spacing Small',
-          type: 'spacing',
-          value: '8px',
-          description: 'Small spacing unit'
-        },
-        {
-          id: 'demo-spacing-md',
-          name: 'Spacing Medium',
-          type: 'spacing',
-          value: '16px',
-          description: 'Medium spacing unit'
-        },
-        {
-          id: 'demo-spacing-lg',
-          name: 'Spacing Large',
-          type: 'spacing',
-          value: '24px',
-          description: 'Large spacing unit'
-        },
-        {
-          id: 'demo-typography-heading',
-          name: 'Heading Typography',
-          type: 'typography',
-          value: {
-            fontFamily: 'Inter',
-            fontSize: '24px',
-            fontWeight: '600'
-          },
-          description: 'Heading typography style'
-        },
-        {
-          id: 'demo-typography-body',
-          name: 'Body Typography',
-          type: 'typography',
-          value: {
-            fontFamily: 'Inter',
-            fontSize: '16px',
-            fontWeight: '400'
-          },
-          description: 'Body text typography style'
-        }
-      ];
+      console.log('❌ No Figma connection configured for token extraction');
+      throw new Error('Figma connection not configured. Please set FIGMA_ACCESS_TOKEN and FIGMA_FILE_ID in your .env file.');
     }
 
-    const file = await this.makeFigmaRequest(`/files/${this.fileId}`);
+    const file = await this.makeFigmaRequestWithRateLimit(`/files/${this.fileId}`);
     const tokens = [];
 
     console.log('📄 Figma file loaded, full structure:', {
@@ -1011,68 +1451,11 @@ export class ${componentId.replace(/[^a-zA-Z0-9]/g, '')}Component {
 
   async extractComponents() {
     if (!this.figmaToken || !this.fileId) {
-      console.log('🎭 Returning demo components (no Figma connection)');
-      return [
-        {
-          id: 'demo-button',
-          name: 'Button',
-          type: 'component',
-          variants: ['primary', 'secondary', 'outline'],
-          lastModified: new Date().toISOString()
-        },
-        {
-          id: 'demo-card',
-          name: 'Card',
-          type: 'component',
-          variants: ['default', 'elevated', 'outlined'],
-          lastModified: new Date().toISOString()
-        },
-        {
-          id: 'demo-input',
-          name: 'Input',
-          type: 'component',
-          variants: ['default', 'error', 'success'],
-          lastModified: new Date().toISOString()
-        },
-        {
-          id: 'demo-modal',
-          name: 'Modal',
-          type: 'component',
-          variants: ['default', 'large', 'small'],
-          lastModified: new Date().toISOString()
-        },
-        {
-          id: 'demo-navigation',
-          name: 'Navigation',
-          type: 'component',
-          variants: ['horizontal', 'vertical'],
-          lastModified: new Date().toISOString()
-        },
-        {
-          id: 'demo-avatar',
-          name: 'Avatar',
-          type: 'component',
-          variants: ['circle', 'square', 'large', 'small'],
-          lastModified: new Date().toISOString()
-        },
-        {
-          id: 'demo-badge',
-          name: 'Badge',
-          type: 'component',
-          variants: ['default', 'success', 'warning', 'error'],
-          lastModified: new Date().toISOString()
-        },
-        {
-          id: 'demo-tooltip',
-          name: 'Tooltip',
-          type: 'component',
-          variants: ['top', 'bottom', 'left', 'right'],
-          lastModified: new Date().toISOString()
-        }
-      ];
+      console.log('❌ No Figma connection configured for component extraction');
+      throw new Error('Figma connection not configured. Please set FIGMA_ACCESS_TOKEN and FIGMA_FILE_ID in your .env file.');
     }
 
-    const file = await this.makeFigmaRequest(`/files/${this.fileId}`);
+    const file = await this.makeFigmaRequestWithRateLimit(`/files/${this.fileId}`);
     const components = [];
 
     // Use the same root node approach as tokens
@@ -1100,29 +1483,13 @@ export class ${componentId.replace(/[^a-zA-Z0-9]/g, '')}Component {
     }
 
     if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
-      // Generate preview image URL for the component
-      let previewUrl = null;
-      try {
-        console.log(`🖼️ Generating preview for component: ${node.name} (${node.id})`);
-        const imageResponse = await this.makeFigmaRequest(`/images/${this.fileId}?ids=${node.id}&format=png&scale=1`);
-        console.log(`📸 Image response for ${node.name}:`, JSON.stringify(imageResponse, null, 2));
-        if (imageResponse.images && imageResponse.images[node.id]) {
-          previewUrl = imageResponse.images[node.id];
-          console.log(`✅ Preview generated for ${node.name}: ${previewUrl}`);
-        } else {
-          console.log(`⚠️ No image URL found for component ${node.name}`);
-        }
-      } catch (error) {
-        console.log(`❌ Could not generate preview for component ${node.name}:`, error.message);
-      }
-
       components.push({
         id: node.id,
         name: node.name,
         type: node.type,
         variants: this.extractVariants(node),
         properties: this.extractProperties(node),
-        preview: previewUrl,
+        preview: null, // Will be generated in batch later
         lastModified: new Date().toISOString()
       });
     }
@@ -1134,6 +1501,47 @@ export class ${componentId.replace(/[^a-zA-Z0-9]/g, '')}Component {
         }
       }
     }
+  }
+
+  // Batch generate preview images for efficiency
+  async generateBatchPreviews(items, itemType = 'component') {
+    if (!items || items.length === 0) return items;
+
+    console.log(`🖼️ Generating batch previews for ${items.length} ${itemType}s...`);
+    
+    // Group items into batches of 10 (Figma API limit)
+    const batchSize = 10;
+    const batches = [];
+    for (let i = 0; i < items.length; i += batchSize) {
+      batches.push(items.slice(i, i + batchSize));
+    }
+
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      const ids = batch.map(item => item.id).join(',');
+      
+      try {
+        console.log(`📸 Batch ${batchIndex + 1}/${batches.length}: Generating previews for ${batch.length} ${itemType}s`);
+        const imageResponse = await this.makeFigmaRequestWithRateLimit(`/images/${this.fileId}?ids=${ids}&format=png&scale=1`);
+        
+        if (imageResponse.images) {
+          batch.forEach(item => {
+            if (imageResponse.images[item.id]) {
+              item.preview = imageResponse.images[item.id];
+            }
+          });
+        }
+        
+        // Update progress
+        const progress = Math.round(((batchIndex + 1) / batches.length) * 100);
+        console.log(`✅ Batch ${batchIndex + 1} complete (${progress}%)`);
+        
+      } catch (error) {
+        console.log(`❌ Failed to generate previews for batch ${batchIndex + 1}:`, error.message);
+      }
+    }
+
+    return items;
   }
 
   extractVariants(component) {
@@ -1167,42 +1575,11 @@ export class ${componentId.replace(/[^a-zA-Z0-9]/g, '')}Component {
 
   async extractPages() {
     if (!this.figmaToken || !this.fileId) {
-      console.log('🎭 Returning demo pages (no Figma connection)');
-      return [
-        {
-          id: 'demo-page-home',
-          name: 'Home Page',
-          type: 'page',
-          lastModified: new Date().toISOString()
-        },
-        {
-          id: 'demo-page-about',
-          name: 'About Page',
-          type: 'page',
-          lastModified: new Date().toISOString()
-        },
-        {
-          id: 'demo-page-contact',
-          name: 'Contact Page',
-          type: 'page',
-          lastModified: new Date().toISOString()
-        },
-        {
-          id: 'demo-page-dashboard',
-          name: 'Dashboard',
-          type: 'page',
-          lastModified: new Date().toISOString()
-        },
-        {
-          id: 'demo-page-settings',
-          name: 'Settings',
-          type: 'page',
-          lastModified: new Date().toISOString()
-        }
-      ];
+      console.log('❌ No Figma connection configured for page extraction');
+      throw new Error('Figma connection not configured. Please set FIGMA_ACCESS_TOKEN and FIGMA_FILE_ID in your .env file.');
     }
 
-    const file = await this.makeFigmaRequest(`/files/${this.fileId}`);
+    const file = await this.makeFigmaRequestWithRateLimit(`/files/${this.fileId}`);
     const pages = [];
 
     // Use the same root node approach
@@ -1217,37 +1594,1444 @@ export class ${componentId.replace(/[^a-zA-Z0-9]/g, '')}Component {
       
       for (const page of rootNode.children) {
         if (page && page.id && page.name) {
-          // Generate preview image URL for the page
-          let previewUrl = null;
-          try {
-            console.log(`🖼️ Generating preview for page: ${page.name} (${page.id})`);
-            const imageResponse = await this.makeFigmaRequest(`/images/${this.fileId}?ids=${page.id}&format=png&scale=1`);
-            console.log(`📸 Image response for page ${page.name}:`, JSON.stringify(imageResponse, null, 2));
-            if (imageResponse.images && imageResponse.images[page.id]) {
-              previewUrl = imageResponse.images[page.id];
-              console.log(`✅ Preview generated for page ${page.name}: ${previewUrl}`);
-            } else {
-              console.log(`⚠️ No image URL found for page ${page.name}`);
-            }
-          } catch (error) {
-            console.log(`❌ Could not generate preview for page ${page.name}:`, error.message);
-          }
-
-          pages.push({
+          // Enhanced page extraction with detailed content
+          const enhancedPage = {
             id: page.id,
             name: page.name,
+            type: page.type,
             children: page.children || [],
-            preview: previewUrl,
-            lastModified: new Date().toISOString()
-          });
+            preview: null, // Will be generated in batch later
+            lastModified: new Date().toISOString(),
+            // Enhanced properties for flow visualization
+            flowData: {
+              interactions: [],
+              navigationElements: [],
+              componentInstances: [],
+              connections: [],
+              subPages: []
+            }
+          };
+
+          // Extract detailed page content
+          enhancedPage.flowData = this.extractPageFlowData(page);
+          
+          // Special handling for Screenshots container
+          if (page.name.toLowerCase().includes('screenshot')) {
+            console.log(`📸 Found Screenshots container: ${page.name}`);
+            this.extractPagesFromScreenshots(page, enhancedPage.flowData);
+          }
+          
+          pages.push(enhancedPage);
         }
       }
+      
+      // Also look for Screenshots in nested structures
+      this.findScreenshotsInNestedStructure(rootNode, pages);
     } else {
       console.log('⚠️ No children found in root node for page extraction');
     }
     
-    console.log(`📄 Extracted ${pages.length} pages`);
+    console.log(`📄 Extracted ${pages.length} pages with flow data`);
     return pages;
+  }
+
+  extractPageFlowData(page) {
+    const flowData = {
+      interactions: [],
+      navigationElements: [],
+      componentInstances: [],
+      connections: [],
+      clickableElements: [],
+      subPages: [] // Extract individual pages from containers
+    };
+
+    // Recursively traverse page content
+    this.traversePageForFlowData(page, flowData);
+    
+    return flowData;
+  }
+
+  traversePageForFlowData(node, flowData) {
+    if (!node) return;
+
+    // Check for interactions
+    if (node.interactions && Array.isArray(node.interactions) && node.interactions.length > 0) {
+      flowData.interactions.push({
+        elementId: node.id,
+        elementName: node.name,
+        interactions: node.interactions
+      });
+    }
+
+    // Check for individual page screenshots (FRAME type with specific naming)
+    if (this.isIndividualPage(node)) {
+      flowData.subPages.push({
+        id: node.id,
+        name: node.name,
+        type: node.type,
+        bounds: node.absoluteBoundingBox,
+        isIndividualPage: true,
+        children: node.children || []
+      });
+    }
+    
+    // Additional check: Look for any frame or rectangle that could be a page (more aggressive)
+    if ((node.type === 'FRAME' || node.type === 'RECTANGLE') && node.absoluteBoundingBox) {
+      const isLargeEnough = node.absoluteBoundingBox.width >= 300 && node.absoluteBoundingBox.height >= 400;
+      const hasContent = node.children && Array.isArray(node.children) && node.children.length >= 2;
+      const isNotContainer = !['container', 'group', 'screenshots', 'sitemap', 'canvas', 'symbols'].some(keyword => 
+        node.name.toLowerCase().includes(keyword)
+      );
+      
+      // For RECTANGLE elements (images), check if they look like page screenshots
+      const isImageScreenshot = node.type === 'RECTANGLE' && 
+                               node.name.toLowerCase().includes('image') &&
+                               node.absoluteBoundingBox.width >= 1000 && 
+                               node.absoluteBoundingBox.height >= 800;
+      
+      if ((isLargeEnough && hasContent && isNotContainer) || isImageScreenshot) {
+        // Check if this page is not already added
+        const alreadyExists = flowData.subPages.some(subPage => subPage.id === node.id);
+        if (!alreadyExists) {
+          console.log(`🎯 Found potential page: "${node.name}" (${node.absoluteBoundingBox.width}x${node.absoluteBoundingBox.height}) - Type: ${node.type}`);
+          flowData.subPages.push({
+            id: node.id,
+            name: node.name,
+            type: node.type,
+            bounds: node.absoluteBoundingBox,
+            isIndividualPage: true,
+            children: node.children || []
+          });
+        }
+      }
+    }
+    
+    // Special handling for Screenshots container - look deeper for individual pages
+    if (node.name && node.name.toLowerCase().includes('screenshots')) {
+      console.log(`🔍 Processing Screenshots container: "${node.name}"`);
+      this.extractPagesFromScreenshots(node, flowData);
+    }
+
+    // Check for clickable elements (buttons, links, etc.)
+    if (this.isClickableElement(node)) {
+      flowData.clickableElements.push({
+        id: node.id,
+        name: node.name,
+        type: node.type,
+        bounds: node.absoluteBoundingBox,
+        componentId: node.componentId,
+        text: node.characters || node.name
+      });
+    }
+
+    // Check for component instances
+    if (node.type === 'INSTANCE' && node.componentId) {
+      flowData.componentInstances.push({
+        id: node.id,
+        name: node.name,
+        componentId: node.componentId,
+        bounds: node.absoluteBoundingBox,
+        overrides: node.overrides || []
+      });
+    }
+
+    // Check for navigation-related elements
+    if (this.isNavigationElement(node)) {
+      flowData.navigationElements.push({
+        id: node.id,
+        name: node.name,
+        type: node.type,
+        bounds: node.absoluteBoundingBox,
+        text: node.characters || node.name
+      });
+    }
+
+    // Recursively process children
+    if (node.children && Array.isArray(node.children)) {
+      for (const child of node.children) {
+        this.traversePageForFlowData(child, flowData);
+      }
+    }
+  }
+  
+  findScreenshotsInNestedStructure(node, pages) {
+    if (!node.children || !Array.isArray(node.children)) {
+      return;
+    }
+    
+    for (const child of node.children) {
+      // Check if this child is a Screenshots container
+      if (child.name && child.name.toLowerCase().includes('screenshot')) {
+        console.log(`📸 Found nested Screenshots container: ${child.name}`);
+        
+        // Create a new page entry for this Screenshots container
+        const screenshotsPage = {
+          id: child.id,
+          name: child.name,
+          type: child.type,
+          children: child.children || [],
+          preview: null,
+          lastModified: new Date().toISOString(),
+          flowData: {
+            interactions: [],
+            navigationElements: [],
+            componentInstances: [],
+            connections: [],
+            subPages: []
+          }
+        };
+        
+        // Extract individual pages from this Screenshots container
+        this.extractPagesFromScreenshots(child, screenshotsPage.flowData);
+        
+        pages.push(screenshotsPage);
+      }
+      
+      // Recursively search deeper
+      if (child.children && Array.isArray(child.children)) {
+        this.findScreenshotsInNestedStructure(child, pages);
+      }
+    }
+  }
+  
+  extractPagesFromScreenshots(screenshotsNode, flowData) {
+    if (!screenshotsNode.children || !Array.isArray(screenshotsNode.children)) {
+      return;
+    }
+    
+    console.log(`📋 Found ${screenshotsNode.children.length} direct children in Screenshots`);
+    
+    // Look through all children recursively
+    this.findIndividualPagesRecursive(screenshotsNode, flowData);
+  }
+  
+  findIndividualPagesRecursive(node, flowData) {
+    if (!node.children || !Array.isArray(node.children)) {
+      return;
+    }
+    
+    for (const child of node.children) {
+      // Check if this child is a potential individual page (FRAME or RECTANGLE)
+      if ((child.type === 'FRAME' || child.type === 'RECTANGLE') && child.absoluteBoundingBox) {
+        const isLargeEnough = child.absoluteBoundingBox.width >= 200 && child.absoluteBoundingBox.height >= 300;
+        const hasContent = child.children && Array.isArray(child.children) && child.children.length >= 1;
+        const isNotContainer = !['container', 'group', 'screenshots', 'sitemap', 'canvas', 'symbols'].some(keyword => 
+          child.name.toLowerCase().includes(keyword)
+        );
+        
+        // For RECTANGLE elements (images), check if they look like page screenshots
+        const isImageScreenshot = child.type === 'RECTANGLE' && 
+                                 (child.name.toLowerCase().includes('image') || 
+                                  child.name.toLowerCase().includes('screenshot') ||
+                                  child.name.toLowerCase().includes('page')) &&
+                                 child.absoluteBoundingBox.width >= 800 && 
+                                 child.absoluteBoundingBox.height >= 600;
+        
+        // More aggressive detection for any large RECTANGLE in Screenshots context
+        const isLargeRectangle = child.type === 'RECTANGLE' && 
+                                child.absoluteBoundingBox.width >= 1000 && 
+                                child.absoluteBoundingBox.height >= 800;
+        
+        if ((isLargeEnough && hasContent && isNotContainer) || isImageScreenshot || isLargeRectangle) {
+          // Check if this page is not already added
+          const alreadyExists = flowData.subPages.some(subPage => subPage.id === child.id);
+          if (!alreadyExists) {
+            console.log(`🎯 Found individual page in Screenshots: "${child.name}" (${child.absoluteBoundingBox.width}x${child.absoluteBoundingBox.height}) - Type: ${child.type}`);
+            flowData.subPages.push({
+              id: child.id,
+              name: child.name,
+              type: child.type,
+              bounds: child.absoluteBoundingBox,
+              isIndividualPage: true,
+              children: child.children || []
+            });
+          }
+        }
+      }
+      
+      // Recursively check nested children
+      if (child.children && Array.isArray(child.children)) {
+        this.findIndividualPagesRecursive(child, flowData);
+      }
+    }
+  }
+  
+  extractIndividualPagesFromContainer(container) {
+    const individualPages = [];
+    
+    if (!container.children || !Array.isArray(container.children)) {
+      return individualPages;
+    }
+    
+    console.log(`🔍 Extracting individual pages from container: "${container.name}"`);
+    
+    // Recursively find all individual pages in this container
+    this.findIndividualPagesInContainer(container, individualPages);
+    
+    // Generate proper preview URLs for each individual page
+    individualPages.forEach(page => {
+      if (page.bounds) {
+        const width = Math.round(page.bounds.width);
+        const height = Math.round(page.bounds.height);
+        
+        // Generate appropriate preview based on page type and content
+        if (page.type === 'RECTANGLE') {
+          // For RECTANGLE elements (images), try to get actual Figma preview
+          page.preview = this.generateFigmaImageUrl(page.id, width, height);
+        } else if (page.type === 'FRAME') {
+          // For FRAME elements, check if they have meaningful content
+          const hasContent = page.children && page.children.length > 0;
+          if (hasContent) {
+            // Use a more descriptive placeholder for frames with content
+            page.preview = `https://via.placeholder.com/${width}x${height}/4CAF50/ffffff?text=${encodeURIComponent(page.name)}`;
+          } else {
+            // Use a neutral placeholder for empty frames
+            page.preview = `https://via.placeholder.com/${width}x${height}/9E9E9E/ffffff?text=${encodeURIComponent(page.name)}`;
+          }
+        } else {
+          // For other types, use a generic placeholder
+          page.preview = `https://via.placeholder.com/${width}x${height}/667eea/ffffff?text=${encodeURIComponent(page.name)}`;
+        }
+        
+        // Add additional metadata for debugging
+        page.previewInfo = {
+          nodeId: page.id,
+          nodeType: page.type,
+          dimensions: `${width}x${height}`,
+          childrenCount: page.children ? page.children.length : 0
+        };
+      } else {
+        // Fallback for pages without bounds
+        page.preview = `https://via.placeholder.com/400x300/ff9800/ffffff?text=${encodeURIComponent(page.name)}`;
+        page.previewInfo = {
+          nodeId: page.id,
+          nodeType: page.type,
+          dimensions: 'unknown',
+          childrenCount: page.children ? page.children.length : 0
+        };
+      }
+    });
+    
+    console.log(`✅ Extracted ${individualPages.length} individual pages from "${container.name}"`);
+    return individualPages;
+  }
+  
+  findIndividualPagesInContainer(node, individualPages) {
+    if (!node.children || !Array.isArray(node.children)) {
+      return;
+    }
+    
+    for (const child of node.children) {
+      // Check if this child is a potential individual page
+      if ((child.type === 'FRAME' || child.type === 'RECTANGLE') && child.absoluteBoundingBox) {
+        const isLargeEnough = child.absoluteBoundingBox.width >= 200 && child.absoluteBoundingBox.height >= 300;
+        const hasContent = child.children && Array.isArray(child.children) && child.children.length >= 1;
+        const isNotContainer = !['container', 'group', 'screenshots', 'sitemap', 'canvas', 'symbols'].some(keyword => 
+          child.name.toLowerCase().includes(keyword)
+        );
+        
+        // For RECTANGLE elements (images), check if they look like page screenshots
+        const isImageScreenshot = child.type === 'RECTANGLE' && 
+                                 (child.name.toLowerCase().includes('image') || 
+                                  child.name.toLowerCase().includes('screenshot') ||
+                                  child.name.toLowerCase().includes('page')) &&
+                                 child.absoluteBoundingBox.width >= 800 && 
+                                 child.absoluteBoundingBox.height >= 600;
+        
+        // More aggressive detection for any large RECTANGLE in Screenshots context
+        const isLargeRectangle = child.type === 'RECTANGLE' && 
+                                child.absoluteBoundingBox.width >= 1000 && 
+                                child.absoluteBoundingBox.height >= 800;
+        
+        if ((isLargeEnough && hasContent && isNotContainer) || isImageScreenshot || isLargeRectangle) {
+          // Check if this page is not already added
+          const alreadyExists = individualPages.some(page => page.id === child.id);
+          if (!alreadyExists) {
+            console.log(`🎯 Found individual page: "${child.name}" (${child.absoluteBoundingBox.width}x${child.absoluteBoundingBox.height}) - Type: ${child.type}`);
+            // Create individual page with flow data
+            const individualPage = {
+              id: child.id,
+              name: child.name,
+              type: child.type,
+              bounds: child.absoluteBoundingBox,
+              children: child.children || [],
+              lastModified: child.lastModified || new Date().toISOString(),
+              // Add flow data for the individual page
+              flowData: this.extractPageFlowData(child)
+            };
+            
+            // Generate preview for the individual page
+            if (individualPage.bounds) {
+              const width = Math.round(individualPage.bounds.width);
+              const height = Math.round(individualPage.bounds.height);
+              
+              if (individualPage.type === 'RECTANGLE') {
+                individualPage.preview = this.generateFigmaImageUrl(individualPage.id, width, height);
+              } else if (individualPage.type === 'FRAME') {
+                const hasContent = individualPage.children && individualPage.children.length > 0;
+                if (hasContent) {
+                  individualPage.preview = `https://via.placeholder.com/${width}x${height}/4CAF50/ffffff?text=${encodeURIComponent(individualPage.name)}`;
+                } else {
+                  individualPage.preview = `https://via.placeholder.com/${width}x${height}/9E9E9E/ffffff?text=${encodeURIComponent(individualPage.name)}`;
+                }
+              } else {
+                individualPage.preview = `https://via.placeholder.com/${width}x${height}/667eea/ffffff?text=${encodeURIComponent(individualPage.name)}`;
+              }
+              
+              // Add preview info for debugging
+              individualPage.previewInfo = {
+                nodeId: individualPage.id,
+                nodeType: individualPage.type,
+                dimensions: `${width}x${height}`,
+                childrenCount: individualPage.children ? individualPage.children.length : 0
+              };
+            } else {
+              // Fallback for pages without bounds
+              individualPage.preview = `https://via.placeholder.com/400x300/ff9800/ffffff?text=${encodeURIComponent(individualPage.name)}`;
+              individualPage.previewInfo = {
+                nodeId: individualPage.id,
+                nodeType: individualPage.type,
+                dimensions: 'unknown',
+                childrenCount: individualPage.children ? individualPage.children.length : 0
+              };
+            }
+            
+            individualPages.push(individualPage);
+          }
+        }
+      }
+      
+      // Recursively check nested children
+      if (child.children && Array.isArray(child.children)) {
+        this.findIndividualPagesInContainer(child, individualPages);
+      }
+    }
+  }
+  
+  generateFigmaImageUrl(nodeId, width, height) {
+    try {
+      // Generate a proper Figma image API URL
+      const scale = 1;
+      const format = 'png';
+      const imageUrl = `https://www.figma.com/file/${this.figmaFileId}/?node-id=${nodeId}&scale=${scale}&format=${format}`;
+      
+      // For now, return a placeholder with the node info
+      // In a production environment, you would make an API call to get the actual image
+      return `https://via.placeholder.com/${width}x${height}/667eea/ffffff?text=${encodeURIComponent(`Figma Node: ${nodeId}`)}`;
+    } catch (error) {
+      console.error('❌ Error generating Figma image URL:', error);
+      return `https://via.placeholder.com/${width}x${height}/ff6b6b/ffffff?text=Image+Error`;
+    }
+  }
+
+  generateHtmlPreview(page) {
+    try {
+      console.log(`🌐 Generating HTML preview for: ${page.name}`);
+      
+      // Extract page dimensions
+      const width = page.bounds ? Math.round(page.bounds.width) : 800;
+      const height = page.bounds ? Math.round(page.bounds.height) : 600;
+      
+      // Generate HTML based on page content
+      let htmlContent = '';
+      
+      if (page.children && page.children.length > 0) {
+        htmlContent = this.generateHtmlFromChildren(page.children);
+      } else {
+        htmlContent = this.generatePlaceholderHtml(page);
+      }
+      
+      const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${page.name} - HTML Preview</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f8f9fa;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .preview-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+            max-width: 100%;
+            max-height: 100%;
+        }
+        
+        .preview-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            text-align: center;
+        }
+        
+        .preview-content {
+            width: ${width}px;
+            height: ${height}px;
+            position: relative;
+            background: white;
+            overflow: hidden;
+        }
+        
+        .page-content {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+        
+        .element {
+            position: absolute;
+            border: 1px solid #e9ecef;
+            background: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .element:hover {
+            background: #667eea;
+            color: white;
+            transform: scale(1.02);
+        }
+        
+        .element.text {
+            background: transparent;
+            border: none;
+            color: #333;
+            font-weight: 500;
+        }
+        
+        .element.button {
+            background: #667eea;
+            color: white;
+            border-radius: 6px;
+            border: none;
+        }
+        
+        .element.image {
+            background: #e9ecef;
+            border: 2px dashed #ccc;
+        }
+        
+        .placeholder-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #666;
+            text-align: center;
+            padding: 40px;
+        }
+        
+        .placeholder-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+        
+        .placeholder-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .placeholder-subtitle {
+            font-size: 14px;
+            opacity: 0.7;
+        }
+        
+        .page-info {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="preview-container">
+        <div class="preview-header">
+            <h2>${page.name}</h2>
+            <p>HTML Preview - ${width}×${height}</p>
+        </div>
+        <div class="preview-content">
+            <div class="page-content">
+                ${htmlContent}
+                <div class="page-info">
+                    📄 ${page.type} | 🧩 ${page.children ? page.children.length : 0} elements
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Add interactivity to elements
+        document.querySelectorAll('.element').forEach(element => {
+            element.addEventListener('click', function() {
+                const name = this.getAttribute('data-name');
+                const type = this.getAttribute('data-type');
+                alert(\`Clicked: \${name} (\${type})\`);
+            });
+        });
+    </script>
+</body>
+</html>`;
+      
+      return html;
+    } catch (error) {
+      console.error('❌ Error generating HTML preview:', error);
+      return this.generateErrorHtml(page, error.message);
+    }
+  }
+
+  generateHtmlFromChildren(children) {
+    let html = '';
+    
+    children.forEach((child, index) => {
+      if (!child.absoluteBoundingBox) return;
+      
+      const x = child.absoluteBoundingBox.x || 0;
+      const y = child.absoluteBoundingBox.y || 0;
+      const width = child.absoluteBoundingBox.width || 100;
+      const height = child.absoluteBoundingBox.height || 50;
+      
+      let elementClass = 'element';
+      let content = child.name || `Element ${index + 1}`;
+      
+      // Determine element type and styling
+      if (child.type === 'TEXT') {
+        elementClass += ' text';
+        content = child.characters || child.name || 'Text';
+      } else if (this.isClickableElement(child)) {
+        elementClass += ' button';
+      } else if (child.type === 'RECTANGLE' && child.fills) {
+        elementClass += ' image';
+        content = '🖼️';
+      }
+      
+      html += '<div class="' + elementClass + '" ' +
+              'style="left: ' + x + 'px; top: ' + y + 'px; width: ' + width + 'px; height: ' + height + 'px;" ' +
+              'data-name="' + (child.name || 'Unknown') + '" ' +
+              'data-type="' + (child.type || 'Unknown') + '" ' +
+              'title="' + (child.name || 'Element') + '">' +
+              content +
+              '</div>';
+    });
+    
+    return html;
+  }
+
+  generatePlaceholderHtml(page) {
+    return '<div class="placeholder-content">' +
+           '<div class="placeholder-icon">📄</div>' +
+           '<div class="placeholder-title">' + page.name + '</div>' +
+           '<div class="placeholder-subtitle">' +
+           'This is a preview of the page structure.<br>' +
+           'No detailed content available.' +
+           '</div>' +
+           '</div>';
+  }
+
+  generateErrorHtml(page, error) {
+    return '<div class="placeholder-content">' +
+           '<div class="placeholder-icon">❌</div>' +
+           '<div class="placeholder-title">Preview Error</div>' +
+           '<div class="placeholder-subtitle">' +
+           'Failed to generate preview for ' + page.name + '<br>' +
+           'Error: ' + error +
+           '</div>' +
+           '</div>';
+  }
+
+  generateComponentHtmlPreview(component) {
+    try {
+      // Check if HTML preview is already cached in file storage
+      const componentCacheKey = `${component.id}_${component.lastModified || 'unknown'}`;
+      
+      if (this.htmlPreviewCache.has(componentCacheKey)) {
+        console.log(`🌐 Using cached HTML preview for component: ${component.name}`);
+        return this.htmlPreviewCache.get(componentCacheKey);
+      }
+      
+      console.log(`🌐 Generating new HTML preview for component: ${component.name}`);
+      console.log(`🔍 Component data:`, {
+        id: component.id,
+        name: component.name,
+        type: component.type,
+        hasChildren: !!(component.children && component.children.length > 0),
+        childrenCount: component.children ? component.children.length : 0,
+        properties: component.properties,
+        variants: component.variants
+      });
+      
+      // Extract component dimensions and properties
+      const width = component.absoluteBoundingBox ? Math.round(component.absoluteBoundingBox.width) : 200;
+      const height = component.absoluteBoundingBox ? Math.round(component.absoluteBoundingBox.height) : 100;
+      
+      // Get design tokens for styling
+      const tokens = this.cachedTokens || [];
+      const colors = tokens.filter(t => t.type === 'color');
+      const spacing = tokens.filter(t => t.type === 'spacing');
+      const typography = tokens.filter(t => t.type === 'typography');
+      
+      console.log(`🎨 Available tokens:`, {
+        colors: colors.length,
+        spacing: spacing.length,
+        typography: typography.length,
+        total: tokens.length
+      });
+      
+      // Generate CSS variables from tokens
+      const cssVariables = this.generateCssVariablesFromTokens(tokens);
+      
+      // Generate HTML based on component type and properties
+      let htmlContent = '';
+      
+      if (component.children && component.children.length > 0) {
+        console.log(`📦 Using children data for component: ${component.name}`);
+        htmlContent = this.generateComponentHtmlFromChildren(component.children, tokens);
+      } else {
+        console.log(`📦 No children data, generating from component properties: ${component.name}`);
+        htmlContent = this.generateComponentHtmlFromProperties(component, tokens);
+      }
+      
+      const html = '<!DOCTYPE html>' +
+      '<html lang="en">' +
+      '<head>' +
+          '<meta charset="UTF-8">' +
+          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+          '<title>' + component.name + ' - Component Preview</title>' +
+          '<style>' +
+              '* {' +
+                  'margin: 0;' +
+                  'padding: 0;' +
+                  'box-sizing: border-box;' +
+              '}' +
+              'body {' +
+                  'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;' +
+                  'background: #f8f9fa;' +
+                  'display: flex;' +
+                  'justify-content: center;' +
+                  'align-items: center;' +
+                  'min-height: 100vh;' +
+                  'padding: 20px;' +
+              '}' +
+              '.component-container {' +
+                  'background: white;' +
+                  'border-radius: 8px;' +
+                  'box-shadow: 0 4px 20px rgba(0,0,0,0.1);' +
+                  'overflow: hidden;' +
+                  'max-width: 100%;' +
+                  'max-height: 100%;' +
+              '}' +
+              '.component-header {' +
+                  'background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);' +
+                  'color: white;' +
+                  'padding: 15px 20px;' +
+                  'text-align: center;' +
+              '}' +
+              '.component-content {' +
+                  'width: ' + width + 'px;' +
+                  'height: ' + height + 'px;' +
+                  'position: relative;' +
+                  'background: white;' +
+                  'overflow: hidden;' +
+                  'padding: 20px;' +
+              '}' +
+              '.component-element {' +
+                  'position: absolute;' +
+                  'border: 1px solid #e9ecef;' +
+                  'background: #f8f9fa;' +
+                  'display: flex;' +
+                  'align-items: center;' +
+                  'justify-content: center;' +
+                  'font-size: 12px;' +
+                  'color: #666;' +
+                  'cursor: pointer;' +
+                  'transition: all 0.3s ease;' +
+              '}' +
+              '.component-element:hover {' +
+                  'background: #667eea;' +
+                  'color: white;' +
+                  'transform: scale(1.02);' +
+              '}' +
+              '.component-element.text {' +
+                  'background: transparent;' +
+                  'border: none;' +
+                  'color: #333;' +
+                  'font-weight: 500;' +
+              '}' +
+              '.component-element.button {' +
+                  'background: #667eea;' +
+                  'color: white;' +
+                  'border-radius: 6px;' +
+                  'border: none;' +
+                  'padding: 8px 16px;' +
+              '}' +
+              '.component-element.icon {' +
+                  'background: var(--color-success, #28a745);' +
+                  'color: white;' +
+                  'border-radius: 50%;' +
+                  'display: flex;' +
+                  'align-items: center;' +
+                  'justify-content: center;' +
+                  'font-size: 14px;' +
+                  'font-weight: bold;' +
+              '}' +
+              '.component-info {' +
+                  'position: absolute;' +
+                  'top: 10px;' +
+                  'right: 10px;' +
+                  'background: rgba(0,0,0,0.7);' +
+                  'color: white;' +
+                  'padding: 8px 12px;' +
+                  'border-radius: 4px;' +
+                  'font-size: 12px;' +
+              '}' +
+              '.placeholder-content {' +
+                  'display: flex;' +
+                  'flex-direction: column;' +
+                  'align-items: center;' +
+                  'justify-content: center;' +
+                  'height: 100%;' +
+                  'color: #666;' +
+                  'text-align: center;' +
+                  'padding: 40px;' +
+              '}' +
+              '.placeholder-icon {' +
+                  'font-size: 48px;' +
+                  'margin-bottom: 20px;' +
+                  'opacity: 0.5;' +
+              '}' +
+              '.placeholder-title {' +
+                  'font-size: 24px;' +
+                  'font-weight: 600;' +
+                  'margin-bottom: 10px;' +
+                  'color: #333;' +
+              '}' +
+              '.placeholder-subtitle {' +
+                  'font-size: 14px;' +
+                  'opacity: 0.7;' +
+              '}' +
+              cssVariables +
+          '</style>' +
+      '</head>' +
+      '<body>' +
+          '<div class="component-container">' +
+              '<div class="component-header">' +
+                  '<h2>' + component.name + '</h2>' +
+                  '<p>Component Preview - ' + width + '×' + height + '</p>' +
+              '</div>' +
+              '<div class="component-content">' +
+                  htmlContent +
+                  '<div class="component-info">' +
+                      '🧩 ' + component.type + ' | 🎨 ' + (component.children ? component.children.length : 0) + ' elements' +
+                  '</div>' +
+              '</div>' +
+          '</div>' +
+          '<script>' +
+              'document.querySelectorAll(".component-element").forEach(element => {' +
+                  'element.addEventListener("click", function() {' +
+                      'const name = this.getAttribute("data-name");' +
+                      'const type = this.getAttribute("data-type");' +
+                      'alert("Clicked: " + name + " (" + type + ")");' +
+                  '});' +
+              '});' +
+          '</script>' +
+      '</body>' +
+      '</html>';
+      
+      // Cache the generated HTML preview
+      this.htmlPreviewCache.set(componentCacheKey, html);
+      this.saveHtmlPreviewCache();
+      
+      return html;
+    } catch (error) {
+      console.error('❌ Error generating component HTML preview:', error);
+      return this.generateComponentErrorHtml(component, error.message);
+    }
+  }
+
+  generateComponentHtmlFromChildren(children, tokens) {
+    let html = '';
+    
+    children.forEach((child, index) => {
+      if (!child.absoluteBoundingBox) return;
+      
+      const x = child.absoluteBoundingBox.x || 0;
+      const y = child.absoluteBoundingBox.y || 0;
+      const width = child.absoluteBoundingBox.width || 100;
+      const height = child.absoluteBoundingBox.height || 50;
+      
+      let elementClass = 'component-element';
+      let content = child.name || 'Element ' + (index + 1);
+      let inlineStyles = `left: ${x}px; top: ${y}px; width: ${width}px; height: ${height}px;`;
+      
+      // Apply design tokens and Figma styles
+      if (child.fills && child.fills.length > 0) {
+        const fill = child.fills[0];
+        if (fill.type === 'SOLID' && fill.color) {
+          const color = this.rgbaToHex(fill.color.r, fill.color.g, fill.color.b, fill.color.a);
+          inlineStyles += ` background-color: ${color};`;
+        }
+      }
+      
+      if (child.strokes && child.strokes.length > 0) {
+        const stroke = child.strokes[0];
+        if (stroke.type === 'SOLID' && stroke.color) {
+          const color = this.rgbaToHex(stroke.color.r, stroke.color.g, stroke.color.b, stroke.color.a);
+          inlineStyles += ` border: 1px solid ${color};`;
+        }
+      }
+      
+      // Apply corner radius if available
+      if (child.cornerRadius) {
+        inlineStyles += ` border-radius: ${child.cornerRadius}px;`;
+      }
+      
+      // Determine element type and styling
+      if (child.type === 'TEXT') {
+        elementClass += ' text';
+        content = child.characters || child.name || 'Text';
+        
+        // Apply text styles
+        if (child.style) {
+          if (child.style.fontSize) {
+            inlineStyles += ` font-size: ${child.style.fontSize}px;`;
+          }
+          if (child.style.fontWeight) {
+            inlineStyles += ` font-weight: ${child.style.fontWeight};`;
+          }
+          if (child.style.textAlignHorizontal) {
+            inlineStyles += ` text-align: ${child.style.textAlignHorizontal};`;
+          }
+        }
+        
+        // Apply text color
+        if (child.fills && child.fills.length > 0) {
+          const fill = child.fills[0];
+          if (fill.type === 'SOLID' && fill.color) {
+            const color = this.rgbaToHex(fill.color.r, fill.color.g, fill.color.b, fill.color.a);
+            inlineStyles += ` color: ${color};`;
+          }
+        }
+        
+      } else if (this.isClickableElement(child)) {
+        elementClass += ' button';
+        // Apply button-specific styling
+        inlineStyles += ` cursor: pointer; border-radius: 4px;`;
+        
+      } else if (child.type === 'ELLIPSE' || child.type === 'VECTOR') {
+        elementClass += ' icon';
+        content = '✓'; // Use checkmark for success icons
+        
+        // Apply icon-specific styling
+        if (child.name && child.name.toLowerCase().includes('success')) {
+          inlineStyles += ` background-color: #28a745; color: white;`;
+        } else if (child.name && child.name.toLowerCase().includes('error')) {
+          inlineStyles += ` background-color: #dc3545; color: white;`;
+        } else if (child.name && child.name.toLowerCase().includes('warning')) {
+          inlineStyles += ` background-color: #ffc107; color: #212529;`;
+        } else if (child.name && child.name.toLowerCase().includes('info')) {
+          inlineStyles += ` background-color: #17a2b8; color: white;`;
+        }
+        
+        inlineStyles += ` border-radius: 50%; display: flex; align-items: center; justify-content: center;`;
+      }
+      
+      html += '<div class="' + elementClass + '" ' +
+              'style="' + inlineStyles + '" ' +
+              'data-name="' + (child.name || 'Unknown') + '" ' +
+              'data-type="' + (child.type || 'Unknown') + '" ' +
+              'title="' + (child.name || 'Element') + '">' +
+              content +
+              '</div>';
+    });
+    
+    return html;
+  }
+
+  generateComponentPlaceholderHtml(component) {
+    return '<div class="placeholder-content">' +
+           '<div class="placeholder-icon">🧩</div>' +
+           '<div class="placeholder-title">' + component.name + '</div>' +
+           '<div class="placeholder-subtitle">' +
+           'Component preview<br>' +
+           'No detailed content available' +
+           '</div>' +
+           '</div>';
+  }
+
+  generateComponentHtmlFromProperties(component, tokens) {
+    console.log(`🎨 Generating HTML from properties for: ${component.name}`);
+    
+    // Find relevant design tokens based on component name
+    const componentName = component.name.toLowerCase();
+    let relevantTokens = [];
+    
+    // Look for tokens that match the component name or type
+    tokens.forEach(token => {
+      const tokenName = token.name.toLowerCase();
+      if (tokenName.includes('alert') || tokenName.includes('info') || tokenName.includes('success') || 
+          tokenName.includes('error') || tokenName.includes('warning') || tokenName.includes('link') ||
+          tokenName.includes('tooltip') || tokenName.includes('callout') || tokenName.includes('heads')) {
+        relevantTokens.push(token);
+      }
+    });
+    
+    console.log(`🎨 Found ${relevantTokens.length} relevant tokens for component: ${component.name}`);
+    console.log(`🔍 Component name analysis: "${componentName}"`);
+    console.log(`🔍 Checking for tooltip: ${componentName.includes('tooltip')}`);
+    console.log(`🔍 Checking for heads-up: ${componentName.includes('heads-up')}`);
+    
+    // Generate HTML based on component type
+    if (componentName.includes('tooltip') || componentName.includes('heads-up')) {
+      console.log(`🎯 Using tooltip generation for: ${component.name}`);
+      return this.generateTooltipComponentHtml(component, relevantTokens);
+    } else if (componentName.includes('alert')) {
+      console.log(`🎯 Using alert generation for: ${component.name}`);
+      return this.generateAlertComponentHtml(component, relevantTokens);
+    } else if (componentName.includes('button')) {
+      console.log(`🎯 Using button generation for: ${component.name}`);
+      return this.generateButtonComponentHtml(component, relevantTokens);
+    } else if (componentName.includes('input')) {
+      console.log(`🎯 Using input generation for: ${component.name}`);
+      return this.generateInputComponentHtml(component, relevantTokens);
+    } else {
+      console.log(`🎯 Using generic generation for: ${component.name}`);
+      return this.generateGenericComponentHtml(component, relevantTokens);
+    }
+  }
+
+  generateTooltipComponentHtml(component, tokens) {
+    console.log(`🎯 Generating tooltip HTML for: ${component.name}`);
+    
+    // Extract component data
+    const componentName = component.name.toLowerCase();
+    let bgColor = '#FFA500'; // Default orange
+    let textColor = '#FFFFFF';
+    let textContent = 'نص'; // Default Arabic text
+    let arrowDirection = 'up';
+    let borderRadius = '8px';
+    let padding = '12px 16px';
+    
+    // Determine arrow direction from component name
+    if (componentName.includes('arrow-up')) {
+      arrowDirection = 'up';
+    } else if (componentName.includes('arrow-down')) {
+      arrowDirection = 'down';
+    } else if (componentName.includes('arrow-left')) {
+      arrowDirection = 'left';
+    } else if (componentName.includes('arrow-right')) {
+      arrowDirection = 'right';
+    }
+    
+    // Find relevant tokens
+    const colorToken = tokens.find(t => 
+      t.name.toLowerCase().includes('orange') || 
+      t.name.toLowerCase().includes('tooltip') || 
+      t.name.toLowerCase().includes('callout') ||
+      t.name.toLowerCase().includes('heads')
+    );
+    
+    if (colorToken && colorToken.value) {
+      bgColor = colorToken.value;
+    }
+    
+    // Extract text content from component children if available
+    if (component.children && component.children.length > 0) {
+      const textChild = component.children.find(child => child.type === 'TEXT');
+      if (textChild && textChild.characters) {
+        textContent = textChild.characters;
+      }
+      
+      // Extract styling from children
+      const mainChild = component.children.find(child => child.type === 'RECTANGLE' || child.type === 'FRAME');
+      if (mainChild) {
+        if (mainChild.fills && mainChild.fills.length > 0) {
+          const fill = mainChild.fills[0];
+          if (fill.type === 'SOLID' && fill.color) {
+            const { r, g, b } = fill.color;
+            bgColor = `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
+          }
+        }
+        
+        if (mainChild.cornerRadius) {
+          borderRadius = `${mainChild.cornerRadius}px`;
+        }
+      }
+    }
+    
+    // Generate arrow CSS based on direction
+    let arrowCSS = '';
+    if (arrowDirection === 'up') {
+      arrowCSS = `
+        position: absolute;
+        top: -8px;
+        left: 20px;
+        width: 0;
+        height: 0;
+        border-left: 8px solid transparent;
+        border-right: 8px solid transparent;
+        border-bottom: 8px solid ${bgColor};
+      `;
+    } else if (arrowDirection === 'down') {
+      arrowCSS = `
+        position: absolute;
+        bottom: -8px;
+        left: 20px;
+        width: 0;
+        height: 0;
+        border-left: 8px solid transparent;
+        border-right: 8px solid transparent;
+        border-top: 8px solid ${bgColor};
+      `;
+    } else if (arrowDirection === 'left') {
+      arrowCSS = `
+        position: absolute;
+        left: -8px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 0;
+        height: 0;
+        border-top: 8px solid transparent;
+        border-bottom: 8px solid transparent;
+        border-right: 8px solid ${bgColor};
+      `;
+    } else if (arrowDirection === 'right') {
+      arrowCSS = `
+        position: absolute;
+        right: -8px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 0;
+        height: 0;
+        border-top: 8px solid transparent;
+        border-bottom: 8px solid transparent;
+        border-left: 8px solid ${bgColor};
+      `;
+    }
+    
+    return `
+      <div class="tooltip-callout" style="
+        background-color: ${bgColor};
+        color: ${textColor};
+        padding: ${padding};
+        border-radius: ${borderRadius};
+        position: relative;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        max-width: 300px;
+      ">
+        <div class="tooltip-arrow" style="${arrowCSS}"></div>
+        <div class="tooltip-content" style="
+          text-align: center;
+          direction: rtl;
+          font-weight: 500;
+        ">
+          ${textContent}
+        </div>
+      </div>
+    `;
+  }
+
+  generateAlertComponentHtml(component, tokens) {
+    const componentName = component.name.toLowerCase();
+    let alertType = 'info';
+    let alertColor = '#17a2b8';
+    let alertIcon = 'ℹ️';
+    
+    if (componentName.includes('success')) {
+      alertType = 'success';
+      alertColor = '#28a745';
+      alertIcon = '✅';
+    } else if (componentName.includes('error')) {
+      alertType = 'error';
+      alertColor = '#dc3545';
+      alertIcon = '❌';
+    } else if (componentName.includes('warning')) {
+      alertType = 'warning';
+      alertColor = '#ffc107';
+      alertIcon = '⚠️';
+    } else if (componentName.includes('info')) {
+      alertType = 'info';
+      alertColor = '#17a2b8';
+      alertIcon = 'ℹ️';
+    }
+    
+    // Find specific tokens for this alert type
+    const colorToken = tokens.find(t => t.name.toLowerCase().includes(alertType));
+    if (colorToken && colorToken.value) {
+      alertColor = colorToken.value;
+    }
+    
+    return `
+      <div class="alert-component" style="
+        background-color: ${alertColor}20;
+        border: 1px solid ${alertColor};
+        border-radius: 8px;
+        padding: 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: ${alertColor};
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+      ">
+        <div class="alert-icon" style="font-size: 18px;">${alertIcon}</div>
+        <div class="alert-content">
+          <div class="alert-title" style="font-weight: 600; margin-bottom: 4px;">
+            ${component.name.replace(/^.*\//, '').replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+          </div>
+          <div class="alert-message">
+            ${componentName.includes('link') ? 'This is an informational alert with a link. Click here for more details.' : 'This is an informational alert message.'}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  generateButtonComponentHtml(component, tokens) {
+    const componentName = component.name.toLowerCase();
+    let buttonStyle = 'primary';
+    let buttonColor = '#007bff';
+    
+    if (componentName.includes('secondary')) {
+      buttonStyle = 'secondary';
+      buttonColor = '#6c757d';
+    } else if (componentName.includes('success')) {
+      buttonStyle = 'success';
+      buttonColor = '#28a745';
+    } else if (componentName.includes('danger')) {
+      buttonStyle = 'danger';
+      buttonColor = '#dc3545';
+    }
+    
+    // Find specific tokens for this button type
+    const colorToken = tokens.find(t => t.name.toLowerCase().includes(buttonStyle));
+    if (colorToken && colorToken.value) {
+      buttonColor = colorToken.value;
+    }
+    
+    return `
+      <button class="button-component" style="
+        background-color: ${buttonColor};
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 12px 24px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      " onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.15)'" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.1)'">
+        ${component.name.replace(/^.*\//, '').replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+      </button>
+    `;
+  }
+
+  generateInputComponentHtml(component, tokens) {
+    return `
+      <div class="input-component" style="
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      ">
+        <label style="font-size: 14px; font-weight: 500; color: #333;">
+          ${component.name.replace(/^.*\//, '').replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+        </label>
+        <input type="text" placeholder="Enter text..." style="
+          padding: 12px;
+          border: 1px solid #ced4da;
+          border-radius: 6px;
+          font-size: 14px;
+          transition: border-color 0.2s ease;
+        " onfocus="this.style.borderColor='#007bff'" onblur="this.style.borderColor='#ced4da'">
+      </div>
+    `;
+  }
+
+  generateGenericComponentHtml(component, tokens) {
+    return `
+      <div class="generic-component" style="
+        background: white;
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
+        padding: 20px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        text-align: center;
+      ">
+        <div style="font-size: 24px; margin-bottom: 12px;">⚡</div>
+        <div style="font-size: 16px; font-weight: 600; color: #333; margin-bottom: 8px;">
+          ${component.name.replace(/^.*\//, '').replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+        </div>
+        <div style="font-size: 14px; color: #6c757d;">
+          Component Preview
+        </div>
+      </div>
+    `;
+  }
+
+  generateComponentErrorHtml(component, error) {
+    return '<div class="placeholder-content">' +
+           '<div class="placeholder-icon">❌</div>' +
+           '<div class="placeholder-title">Component Error</div>' +
+           '<div class="placeholder-subtitle">' +
+           'Failed to generate preview for ' + component.name + '<br>' +
+           'Error: ' + error +
+           '</div>' +
+           '</div>';
+  }
+
+  generateCssVariablesFromTokens(tokens) {
+    let css = '';
+    
+    tokens.forEach(token => {
+      if (token.type === 'color') {
+        const tokenName = token.name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+        css += `--color-${tokenName}: ${token.value};`;
+        
+        // Add semantic color mappings
+        if (tokenName.includes('success')) {
+          css += `--color-success: ${token.value};`;
+        } else if (tokenName.includes('error') || tokenName.includes('danger')) {
+          css += `--color-error: ${token.value};`;
+        } else if (tokenName.includes('warning')) {
+          css += `--color-warning: ${token.value};`;
+        } else if (tokenName.includes('info')) {
+          css += `--color-info: ${token.value};`;
+        } else if (tokenName.includes('primary')) {
+          css += `--color-primary: ${token.value};`;
+        } else if (tokenName.includes('secondary')) {
+          css += `--color-secondary: ${token.value};`;
+        }
+      } else if (token.type === 'spacing') {
+        const tokenName = token.name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+        css += `--spacing-${tokenName}: ${token.value}px;`;
+      } else if (token.type === 'typography') {
+        const tokenName = token.name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+        css += `--font-size-${tokenName}: ${token.value}px;`;
+      } else if (token.type === 'borderRadius') {
+        const tokenName = token.name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+        css += `--border-radius-${tokenName}: ${token.value}px;`;
+      }
+    });
+    
+    return ':root {' + css + '}';
+  }
+
+  isClickableElement(node) {
+    // Check if element is likely clickable
+    const clickableTypes = ['RECTANGLE', 'FRAME', 'INSTANCE', 'GROUP'];
+    const clickableNames = ['button', 'btn', 'link', 'nav', 'menu', 'tab'];
+    
+    const isClickableType = clickableTypes.includes(node.type);
+    const hasClickableName = node.name && clickableNames.some(keyword => 
+      node.name.toLowerCase().includes(keyword)
+    );
+    
+    return isClickableType || hasClickableName;
+  }
+
+  isNavigationElement(node) {
+    // Check if element is navigation-related
+    const navKeywords = ['nav', 'menu', 'tab', 'link', 'button', 'btn'];
+    return node.name && navKeywords.some(keyword => 
+      node.name.toLowerCase().includes(keyword)
+    );
+  }
+
+  isIndividualPage(node) {
+    // Check if this is an individual page/screenshot within a container
+    if (node.type === 'FRAME') {
+      // More specific detection for individual pages
+      const containerKeywords = ['container', 'group', 'screenshots', 'sitemap', 'canvas', 'symbols'];
+      
+      const isContainer = containerKeywords.some(keyword => 
+        node.name.toLowerCase().includes(keyword)
+      );
+      
+      // Check if it has reasonable dimensions for a page (mobile/desktop size)
+      const hasReasonableSize = node.absoluteBoundingBox && 
+                               node.absoluteBoundingBox.width >= 150 && 
+                               node.absoluteBoundingBox.height >= 200;
+      
+      // Check if it has substantial content (not just empty frames)
+      const hasContent = node.children && Array.isArray(node.children) && node.children.length >= 1;
+      
+      // Check if it looks like a UI page (has navigation, buttons, etc.)
+      const hasUIElements = this.hasUIElements(node);
+      
+      // Additional check: exclude very small frames and text-only frames
+      const isNotTooSmall = node.absoluteBoundingBox && 
+                           node.absoluteBoundingBox.width >= 80 && 
+                           node.absoluteBoundingBox.height >= 80;
+      
+      // It's an individual page if:
+      // 1. It's not a container
+      // 2. It has reasonable size
+      // 3. It has content OR UI elements
+      // 4. It's not too small
+      const isIndividual = !isContainer && hasReasonableSize && isNotTooSmall && (hasContent || hasUIElements);
+      
+      // Debug logging for Screenshots container
+      if (node.name && node.name.toLowerCase().includes('screenshots')) {
+        console.log(`🔍 Checking "${node.name}": container=${isContainer}, size=${hasReasonableSize}, content=${hasContent}, ui=${hasUIElements}, small=${!isNotTooSmall}, individual=${isIndividual}`);
+      }
+      
+      return isIndividual;
+    }
+    return false;
+  }
+
+  hasUIElements(node) {
+    // Check if the node contains UI elements like buttons, navigation, etc.
+    if (!node.children || !Array.isArray(node.children)) return false;
+    
+    const uiKeywords = ['button', 'nav', 'menu', 'header', 'footer', 'input', 'form'];
+    
+    for (const child of node.children) {
+      if (child.name && uiKeywords.some(keyword => child.name.toLowerCase().includes(keyword))) {
+        return true;
+      }
+      // Recursively check children
+      if (this.hasUIElements(child)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   async generateAngularComponent(componentId, outputPath) {
@@ -1260,7 +3044,7 @@ export class ${componentId.replace(/[^a-zA-Z0-9]/g, '')}Component {
       // Try to get component from Figma if connected
       if (this.figmaToken && this.fileId) {
         try {
-          const file = await this.makeFigmaRequest(`/files/${this.fileId}`);
+          const file = await this.makeFigmaRequestWithRateLimit(`/files/${this.fileId}`);
           
           if (file && file.document) {
             component = this.findComponentById(file.document, componentId);
@@ -1348,7 +3132,7 @@ export class ${componentId.replace(/[^a-zA-Z0-9]/g, '')}Component {
       // Try to get page from Figma if connected
       if (this.figmaToken && this.fileId) {
         try {
-          const file = await this.makeFigmaRequest(`/files/${this.fileId}`);
+          const file = await this.makeFigmaRequestWithRateLimit(`/files/${this.fileId}`);
           
           if (file && file.document) {
             page = this.findPageById(file.document, pageId);
@@ -1687,6 +3471,224 @@ export class ${pageName}Component {
     }
   }
 
+  // Auto-sync methods
+  startAutoSync() {
+    if (this.autoSyncInterval) {
+      console.log(`🤖 Starting auto-sync with ${this.autoSyncInterval}ms interval`);
+      this.stopAutoSync(); // Clear any existing interval
+      
+      this.autoSyncInterval = setInterval(async () => {
+        await this.performAutoSync();
+      }, this.autoSyncInterval);
+    }
+  }
+
+  stopAutoSync() {
+    if (this.autoSyncInterval) {
+      clearInterval(this.autoSyncInterval);
+      this.autoSyncInterval = null;
+      console.log('⏸️ Auto-sync stopped');
+    }
+  }
+
+  async performAutoSync() {
+    if (this.isSyncing) {
+      console.log('⚠️ Skipping auto-sync - manual sync in progress');
+      return;
+    }
+
+    if (!this.canMakeApiCall()) {
+      console.log('⚠️ Skipping auto-sync - API rate limit reached');
+      return;
+    }
+
+    try {
+      console.log('🤖 Performing auto-sync...');
+      this.lastAutoSync = new Date().toISOString();
+      this.autoSyncError = null;
+      
+      // Check if we should do delta sync or full sync
+      const shouldDoDeltaSync = this.cachedPages && this.cachedPages.length > 0;
+      
+      if (shouldDoDeltaSync) {
+        console.log('🔄 Performing delta sync (only changed items)...');
+        await this.performDeltaSync();
+      } else {
+        console.log('🔄 Performing full sync (no cached data)...');
+        await this.startServerSideSync('full');
+      }
+      
+      console.log('✅ Auto-sync completed successfully');
+    } catch (error) {
+      console.error('❌ Auto-sync failed:', error);
+      this.autoSyncError = error.message;
+    }
+  }
+  
+  async performDeltaSync() {
+    try {
+      console.log('🔄 Starting delta sync...');
+      
+      // Get current file info from Figma
+      const fileInfo = await this.makeFigmaRequestWithRateLimit('/files/' + this.figmaFileId);
+      if (!fileInfo || !fileInfo.lastModified) {
+        console.log('⚠️ Could not get file info, falling back to full sync');
+        await this.startServerSideSync('full');
+        return;
+      }
+      
+      const lastModified = new Date(fileInfo.lastModified);
+      const lastSyncTime = this.getLastSyncTime();
+      
+      console.log(`📅 Last sync: ${lastSyncTime}`);
+      console.log(`📅 File modified: ${lastModified}`);
+      
+      // Check if file has been modified since last sync
+      if (lastSyncTime && lastModified <= lastSyncTime) {
+        console.log('✅ No changes detected, skipping sync');
+        return;
+      }
+      
+      console.log('🔄 Changes detected, performing delta sync...');
+      
+      // For now, we'll do a full sync but in the future we can implement
+      // more granular delta sync by comparing individual nodes
+      await this.startServerSideSync('delta');
+      
+      // Update last sync time
+      this.updateLastSyncTime();
+      
+    } catch (error) {
+      console.error('❌ Delta sync failed:', error);
+      // Fallback to full sync
+      await this.startServerSideSync('full');
+    }
+  }
+  
+  getLastSyncTime() {
+    try {
+      const metadata = JSON.parse(fs.readFileSync(path.join(this.storageDir, 'sync-metadata.json'), 'utf8'));
+      return metadata.lastSyncTime ? new Date(metadata.lastSyncTime) : null;
+    } catch (error) {
+      return null;
+    }
+  }
+  
+  updateLastSyncTime() {
+    try {
+      const metadata = {
+        lastSyncTime: new Date().toISOString(),
+        syncType: 'delta'
+      };
+      fs.writeFileSync(path.join(this.storageDir, 'sync-metadata.json'), JSON.stringify(metadata, null, 2));
+    } catch (error) {
+      console.error('❌ Failed to update sync metadata:', error);
+    }
+  }
+
+  canMakeApiCall() {
+    const now = Date.now();
+    const hourAgo = now - 3600000; // 1 hour in milliseconds
+    
+    // Reset counter if an hour has passed
+    if (now - this.lastApiReset > 3600000) {
+      this.apiCallsThisHour = 0;
+      this.lastApiReset = now;
+      this.saveApiCallTracking(); // Save the reset
+    }
+    
+    return this.apiCallsThisHour < this.maxApiCallsPerHour;
+  }
+
+  trackApiCall() {
+    this.apiCallsThisHour++;
+    console.log(`📊 API calls this hour: ${this.apiCallsThisHour}/${this.maxApiCallsPerHour}`);
+    this.saveApiCallTracking();
+  }
+
+  loadApiCallTracking() {
+    try {
+      const apiTrackingFile = path.join(this.storageDir, 'api-tracking.json');
+      if (fs.existsSync(apiTrackingFile)) {
+        const tracking = JSON.parse(fs.readFileSync(apiTrackingFile, 'utf8'));
+        const now = Date.now();
+        const hourAgo = now - 3600000; // 1 hour in milliseconds
+        
+        // Check if the tracking is still valid (within the last hour)
+        if (tracking.lastApiReset > hourAgo) {
+          this.apiCallsThisHour = tracking.apiCallsThisHour || 0;
+          this.lastApiReset = tracking.lastApiReset;
+          console.log(`📊 Loaded API tracking: ${this.apiCallsThisHour} calls this hour`);
+        } else {
+          // Reset if more than an hour has passed
+          this.apiCallsThisHour = 0;
+          this.lastApiReset = now;
+          console.log('🔄 API tracking reset (hour expired)');
+        }
+      } else {
+        console.log('📊 No previous API tracking found, starting fresh');
+      }
+    } catch (error) {
+      console.error('❌ Error loading API tracking:', error);
+      this.apiCallsThisHour = 0;
+      this.lastApiReset = Date.now();
+    }
+  }
+
+  saveApiCallTracking() {
+    try {
+      const apiTrackingFile = path.join(this.storageDir, 'api-tracking.json');
+      const tracking = {
+        apiCallsThisHour: this.apiCallsThisHour,
+        lastApiReset: this.lastApiReset,
+        maxApiCallsPerHour: this.maxApiCallsPerHour,
+        lastUpdated: new Date().toISOString()
+      };
+      fs.writeFileSync(apiTrackingFile, JSON.stringify(tracking, null, 2));
+    } catch (error) {
+      console.error('❌ Error saving API tracking:', error);
+    }
+  }
+
+  isCacheExpired() {
+    if (!this.lastSyncTime) {
+      return true; // No cache exists
+    }
+    
+    const now = Date.now();
+    const lastSync = Date.parse(this.lastSyncTime);
+    const cacheAge = now - lastSync;
+    
+    return cacheAge > this.cacheValidDuration;
+  }
+
+  async makeFigmaRequestWithRetry(endpoint, maxRetries = 3) {
+    let lastError;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        if (!this.canMakeApiCall()) {
+          throw new Error('API rate limit reached');
+        }
+        
+        this.trackApiCall();
+        const result = await this.makeFigmaRequest(endpoint);
+        return result;
+      } catch (error) {
+        lastError = error;
+        console.log(`⚠️ API request failed (attempt ${attempt}/${maxRetries}):`, error.message);
+        
+        if (attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000; // Exponential backoff
+          console.log(`⏳ Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    
+    throw lastError;
+  }
+
   rgbaToHex(r, g, b, a = 1) {
     const toHex = (c) => {
       const hex = Math.round(c * 255).toString(16);
@@ -1714,30 +3716,79 @@ export class ${pageName}Component {
     this.isSyncing = true;
     this.syncProgress = 0;
     this.syncError = null;
+    this.syncDetails = {
+      phase: 'Starting',
+      current: 0,
+      total: 0,
+      message: 'Initializing sync...'
+    };
 
     try {
       console.log(`🔄 Starting ${syncType} sync from Figma...`);
       
-      if (syncType === 'full' || syncType === 'tokens') {
+      // Check if we should do delta sync
+      const shouldDeltaSync = syncType === 'delta' && this.lastSyncTime && this.lastFileVersion;
+      
+      if (shouldDeltaSync) {
+        console.log('🔄 Performing delta sync...');
+        this.syncDetails.phase = 'Delta Sync';
+        this.syncDetails.message = 'Checking for changes...';
+        
+        // Get current file version
+        const fileInfo = await this.makeFigmaRequestWithRateLimit(`/files/${this.fileId}`);
+        if (fileInfo.version === this.lastFileVersion) {
+          console.log('✅ No changes detected, using cached data');
+          this.syncDetails.message = 'No changes detected';
+          this.syncProgress = 100;
+          return;
+        }
+        
+        this.lastFileVersion = fileInfo.version;
+        console.log(`🔄 File version changed from ${this.lastFileVersion} to ${fileInfo.version}`);
+      }
+      
+      if (syncType === 'full' || syncType === 'tokens' || syncType === 'delta') {
+        this.syncDetails.phase = 'Tokens';
+        this.syncDetails.message = 'Extracting design tokens...';
         this.syncProgress = 10;
         console.log('📦 Syncing design tokens...');
         this.cachedTokens = await this.extractDesignTokens();
-        this.syncProgress = 40;
+        this.syncProgress = 25;
       }
 
-      if (syncType === 'full' || syncType === 'components') {
+      if (syncType === 'full' || syncType === 'components' || syncType === 'delta') {
+        this.syncDetails.phase = 'Components';
+        this.syncDetails.message = 'Extracting components...';
+        this.syncProgress = 30;
         console.log('🧩 Syncing components...');
         this.cachedComponents = await this.extractComponents();
+        this.syncProgress = 50;
+        
+        // Generate batch previews for components
+        this.syncDetails.message = 'Generating component previews...';
+        this.syncProgress = 60;
+        this.cachedComponents = await this.generateBatchPreviews(this.cachedComponents, 'component');
         this.syncProgress = 70;
       }
 
-      if (syncType === 'full' || syncType === 'pages') {
+      if (syncType === 'full' || syncType === 'pages' || syncType === 'delta') {
+        this.syncDetails.phase = 'Pages';
+        this.syncDetails.message = 'Extracting pages...';
+        this.syncProgress = 75;
         console.log('📄 Syncing pages...');
         this.cachedPages = await this.extractPages();
+        this.syncProgress = 85;
+        
+        // Generate batch previews for pages
+        this.syncDetails.message = 'Generating page previews...';
         this.syncProgress = 90;
+        this.cachedPages = await this.generateBatchPreviews(this.cachedPages, 'page');
+        this.syncProgress = 95;
       }
 
       // Save all data
+      this.syncDetails.phase = 'Saving';
+      this.syncDetails.message = 'Saving cached data...';
       this.saveCachedData();
       this.syncProgress = 100;
       this.lastSyncTime = new Date().toISOString();
@@ -1748,8 +3799,142 @@ export class ${pageName}Component {
     } catch (error) {
       console.error('❌ Server-side sync failed:', error);
       this.syncError = error.message;
+      this.syncDetails.message = `Error: ${error.message}`;
     } finally {
       this.isSyncing = false;
+    }
+  }
+
+  /**
+   * Start enhanced sync with token and component linking
+   */
+  async startEnhancedSync(syncType = 'full') {
+    if (this.isSyncing) {
+      console.log('⚠️ Enhanced sync already in progress, skipping...');
+      return;
+    }
+
+    this.isSyncing = true;
+    this.syncProgress = 0;
+    this.syncError = null;
+    this.syncDetails = {
+      phase: 'Starting Enhanced Sync',
+      current: 0,
+      total: 0,
+      message: 'Initializing enhanced sync...'
+    };
+
+    try {
+      console.log(`🔄 Starting enhanced ${syncType} sync...`);
+      
+      if (!this.figmaToken) {
+        throw new Error('Figma connection not configured. Please set FIGMA_ACCESS_TOKEN.');
+      }
+
+      // Check if we can make API calls
+      if (!this.canMakeApiCall()) {
+        throw new Error('API rate limit exceeded. Please wait before making more requests.');
+      }
+
+      // Get configured files and remove duplicates
+      const files = config.figma.files || [{ id: this.fileId, name: 'Design System', type: 'design-system' }];
+      
+      // Remove duplicate files by ID
+      const uniqueFiles = files.filter((file, index, self) => 
+        index === self.findIndex(f => f.id === file.id)
+      );
+      
+      // Sort files by priority (design system first)
+      uniqueFiles.sort((a, b) => (a.priority || 999) - (b.priority || 999));
+      
+      this.syncDetails.total = uniqueFiles.length;
+      
+      // Clear existing enhanced data to prevent duplicates
+      this.enhancedTokens = [];
+      this.enhancedComponents = [];
+      this.enhancedFiles = [];
+      
+      // Process each file
+      for (let i = 0; i < uniqueFiles.length; i++) {
+        const file = uniqueFiles[i];
+        this.syncDetails.current = i;
+        this.syncDetails.phase = `Processing ${file.name}`;
+        this.syncDetails.message = `Extracting data from ${file.name}...`;
+        
+        console.log(`📁 Processing file: ${file.name} (${file.type})`);
+        
+        try {
+          // Get file data from Figma
+          const fileData = await this.makeFigmaRequestWithRateLimit(`/files/${file.id}`);
+          
+          // Extract tokens using enhanced extractor
+          if (config.figma.tokenExtraction.enabled) {
+            console.log(`🎨 Extracting tokens from ${file.name}...`);
+            const tokens = await this.tokenExtractor.extractTokensFromFile(file.id, fileData);
+            
+            // Store tokens with file reference
+            if (!this.enhancedTokens) this.enhancedTokens = [];
+            this.enhancedTokens.push(...tokens);
+          }
+          
+          // Extract components using enhanced extractor
+          if (config.figma.componentExtraction.enabled) {
+            console.log(`🧩 Extracting components from ${file.name}...`);
+            const components = await this.componentExtractor.extractComponentsFromFile(file.id, fileData);
+            
+            // Store components with file reference
+            if (!this.enhancedComponents) this.enhancedComponents = [];
+            this.enhancedComponents.push(...components);
+          }
+          
+          // Store file data with actual name from Figma
+          if (!this.enhancedFiles) this.enhancedFiles = [];
+          this.enhancedFiles.push({
+            id: file.id,
+            name: fileData.name || file.name, // Use actual Figma file name
+            type: file.type,
+            description: file.description,
+            priority: file.priority,
+            lastModified: new Date().toISOString(),
+            version: fileData.version || '',
+            thumbnailUrl: fileData.thumbnailUrl || null,
+            lastModifiedBy: fileData.lastModifiedBy?.name || null
+          });
+          
+          console.log(`✅ Completed processing ${file.name}`);
+          
+        } catch (error) {
+          console.error(`❌ Error processing file ${file.name}:`, error);
+          // Continue with other files
+        }
+      }
+      
+      // Save enhanced data
+      this.saveEnhancedCachedData();
+      
+      // Update sync metadata
+      this.updateLastSyncTime();
+      
+      console.log('✅ Enhanced sync completed successfully');
+      this.syncDetails = {
+        phase: 'Enhanced Sync Completed',
+        current: files.length,
+        total: files.length,
+        message: 'Enhanced sync completed successfully'
+      };
+
+    } catch (error) {
+      console.error('❌ Enhanced sync failed:', error);
+      this.syncError = error.message;
+      this.syncDetails = {
+        phase: 'Enhanced Sync Failed',
+        current: 0,
+        total: 100,
+        message: `Enhanced sync failed: ${error.message}`
+      };
+    } finally {
+      this.isSyncing = false;
+      this.syncProgress = 100;
     }
   }
 
@@ -1792,10 +3977,14 @@ export class ${pageName}Component {
       if (fs.existsSync(this.metadataFile)) {
         fs.unlinkSync(this.metadataFile);
       }
+      if (fs.existsSync(this.htmlPreviewCacheFile)) {
+        fs.unlinkSync(this.htmlPreviewCacheFile);
+      }
       
       this.cachedTokens = [];
       this.cachedComponents = [];
       this.cachedPages = [];
+      this.htmlPreviewCache.clear();
       this.lastSyncTime = null;
       
       console.log('🧹 Server cache cleared');

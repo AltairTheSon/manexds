@@ -1,0 +1,37 @@
+I'm working on a Figma-to-Angular integration app called DesignPrototype. Please read the README2.md file first to understand the complete project context, then help me continue development.
+
+Current Status:
+- Backend: Node.js server (port 3200) with enhanced multi-file sync and rate limiting
+- Frontend: Angular 17+ with enhanced design system and modern UI
+- Current state: COMPLETE enhanced implementation with 13,047 tokens and 1,481 components
+- Goal: Continue development and add new features to the enhanced design system
+
+Key Information:
+- Enhanced token extraction: 13,047 tokens with categorization and usage tracking
+- Enhanced component extraction: 1,481 components with token relationships
+- Multi-file support: Priority-based syncing across multiple Figma files
+- Modern UI: Beautiful, responsive design system interface
+- HTML preview system: Component-specific HTML generation with caching
+
+Architecture:
+- Backend: server/mcp-figma-server.js (enhanced with multi-file support)
+- Enhanced Services: server/services/enhanced-token-extractor.js, enhanced-component-extractor.js
+- Frontend: src/app/components/enhanced-design-system/ (modern design system UI)
+- Service: src/app/services/figma-server.service.ts (enhanced backend communication)
+- Storage: server/storage/ (enhanced-figma-cache.json with 23MB+ data)
+
+Enhanced API Endpoints:
+- GET /api/mcp/figma/enhanced/tokens → Returns enhanced tokens with categorization
+- GET /api/mcp/figma/enhanced/components → Returns enhanced components with token usage
+- GET /api/mcp/figma/enhanced/sync → Enhanced sync with token-component linking
+- GET /api/mcp/figma/page-flows → Returns containers (legacy)
+- GET /api/mcp/figma/container/:id/pages → Returns individual pages (legacy)
+
+Current Data:
+- Enhanced Tokens: 13,047 (with categorization and usage tracking)
+- Enhanced Components: 1,481 (with token relationships)
+- Legacy Tokens: 11,572 (backward compatibility)
+- Legacy Components: 736 (backward compatibility)
+- Pages: 3 (Symbols, Sitemap, Test)
+
+Please read README2.md for complete technical details, then help me continue development of the enhanced design system platform. 

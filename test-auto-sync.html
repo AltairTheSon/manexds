@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto-Sync Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .status-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #667eea;
+        }
+        .button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            margin: 10px 5px;
+            transition: all 0.3s ease;
+        }
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+        }
+        .button.secondary {
+            background: #6c757d;
+        }
+        .button.success {
+            background: #28a745;
+        }
+        .button.danger {
+            background: #dc3545;
+        }
+        .log {
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin: 20px 0;
+        }
+        .input-group {
+            margin: 15px 0;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        .input-group input {
+            width: 100px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Auto-Sync Test Dashboard</h1>
+        <p>Test the automatic Figma sync functionality that monitors file changes and triggers sync automatically.</p>
+
+        <div class="status-card">
+            <h3>🔄 Current Status</h3>
+            <div id="status">Loading...</div>
+        </div>
+
+        <div class="status-card">
+            <h3>🎛️ Auto-Sync Controls</h3>
+            <button class="button success" onclick="enableAutoSync()">Enable Auto-Sync</button>
+            <button class="button danger" onclick="disableAutoSync()">Disable Auto-Sync</button>
+            <button class="button" onclick="manualSync()">Manual Sync</button>
+            
+            <div class="input-group">
+                <label>Check Interval (seconds):</label>
+                <input type="number" id="interval" value="30" min="10" max="300">
+                <button class="button secondary" onclick="updateInterval()">Update Interval</button>
+            </div>
+        </div>
+
+        <div class="status-card">
+            <h3>📊 Sync Statistics</h3>
+            <div id="stats">Loading...</div>
+        </div>
+
+        <div class="status-card">
+            <h3>📝 Activity Log</h3>
+            <div id="log" class="log"></div>
+            <button class="button secondary" onclick="clearLog()">Clear Log</button>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3200/api/mcp/figma';
+        let statusInterval;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStatus();
+            loadStats();
+            startStatusPolling();
+            log('🚀 Auto-Sync Test Dashboard initialized');
+        });
+
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        async function loadStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/auto-sync`);
+                const status = await response.json();
+                
+                document.getElementById('status').innerHTML = `
+                    <p><strong>Auto-Sync:</strong> <span style="color: ${status.enabled ? '#28a745' : '#dc3545'}">${status.enabled ? '🟢 ENABLED' : '🔴 DISABLED'}</span></p>
+                    <p><strong>Check Interval:</strong> ${status.interval / 1000} seconds</p>
+                    <p><strong>Last Auto-Sync:</strong> ${status.lastAutoSync ? new Date(status.lastAutoSync).toLocaleString() : 'Never'}</p>
+                    <p><strong>Watching:</strong> ${status.isWatching ? '🟢 Active' : '🔴 Inactive'}</p>
+                `;
+            } catch (error) {
+                log(`❌ Error loading status: ${error.message}`);
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/sync-status`);
+                const stats = await response.json();
+                
+                document.getElementById('stats').innerHTML = `
+                    <p><strong>Tokens:</strong> ${stats.dataCounts.tokens}</p>
+                    <p><strong>Components:</strong> ${stats.dataCounts.components}</p>
+                    <p><strong>Pages:</strong> ${stats.dataCounts.pages}</p>
+                    <p><strong>Last Sync:</strong> ${stats.lastSyncTime ? new Date(stats.lastSyncTime).toLocaleString() : 'Never'}</p>
+                    <p><strong>Currently Syncing:</strong> ${stats.isSyncing ? '🔄 Yes' : '✅ No'}</p>
+                `;
+            } catch (error) {
+                log(`❌ Error loading stats: ${error.message}`);
+            }
+        }
+
+        async function enableAutoSync() {
+            try {
+                const interval = parseInt(document.getElementById('interval').value) * 1000;
+                const response = await fetch(`${API_BASE}/auto-sync`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: true, interval })
+                });
+                
+                if (response.ok) {
+                    log('✅ Auto-sync enabled');
+                    loadStatus();
+                } else {
+                    log('❌ Failed to enable auto-sync');
+                }
+            } catch (error) {
+                log(`❌ Error enabling auto-sync: ${error.message}`);
+            }
+        }
+
+        async function disableAutoSync() {
+            try {
+                const response = await fetch(`${API_BASE}/auto-sync`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: false })
+                });
+                
+                if (response.ok) {
+                    log('⏸️ Auto-sync disabled');
+                    loadStatus();
+                } else {
+                    log('❌ Failed to disable auto-sync');
+                }
+            } catch (error) {
+                log(`❌ Error disabling auto-sync: ${error.message}`);
+            }
+        }
+
+        async function manualSync() {
+            try {
+                log('🔄 Starting manual sync...');
+                const response = await fetch(`${API_BASE}/sync`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ syncType: 'full' })
+                });
+                
+                if (response.ok) {
+                    log('✅ Manual sync started');
+                } else {
+                    log('❌ Failed to start manual sync');
+                }
+            } catch (error) {
+                log(`❌ Error starting manual sync: ${error.message}`);
+            }
+        }
+
+        async function updateInterval() {
+            try {
+                const interval = parseInt(document.getElementById('interval').value) * 1000;
+                const response = await fetch(`${API_BASE}/auto-sync`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ interval })
+                });
+                
+                if (response.ok) {
+                    log(`⏱️ Auto-sync interval updated to ${interval / 1000} seconds`);
+                    loadStatus();
+                } else {
+                    log('❌ Failed to update interval');
+                }
+            } catch (error) {
+                log(`❌ Error updating interval: ${error.message}`);
+            }
+        }
+
+        function startStatusPolling() {
+            statusInterval = setInterval(() => {
+                loadStatus();
+                loadStats();
+            }, 2000); // Poll every 2 seconds
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (statusInterval) {
+                clearInterval(statusInterval);
+            }
+        });
+    </script>
+</body>
+</html> 

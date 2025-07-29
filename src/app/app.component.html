@@ -1,24 +1,7 @@
-<div class="design-system-app">
-  <!-- Header -->
-  <header class="app-header">
-    <div class="container">
-      <h1 class="app-title">Design System</h1>
-      <nav class="app-nav">
-        <a href="#tokens" class="nav-link">Design Tokens</a>
-        <a href="#components" class="nav-link">Components</a>
-        <a href="#pages" class="nav-link">Pages</a>
-      </nav>
-    </div>
-  </header>
-
-  <!-- Main Content -->
+<div class="app-container">
+  <app-navigation></app-navigation>
+  
   <main class="app-main">
-    <div class="container">
-      <!-- Sync Status -->
-      <app-sync-status></app-sync-status>
-      
-      <!-- Design System Content -->
-      <app-design-system></app-design-system>
-    </div>
+    <router-outlet></router-outlet>
   </main>
 </div> 

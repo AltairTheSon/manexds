@@ -1,4 +1,5 @@
 import { Component, OnInit } from '@angular/core';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { FigmaServerService, PaginatedResponse, FigmaDesignToken, FigmaComponent, FigmaPage } from '../../services/figma-server.service';
 
 @Component({
@@ -28,8 +29,12 @@ export class DesignSystemComponent implements OnInit {
   isLoadingTokens = false;
   isLoadingComponents = false;
   isLoadingPages = false;
+  isRegeneratingAll = false;
 
-  constructor(private figmaServerService: FigmaServerService) {}
+  constructor(
+    private figmaServerService: FigmaServerService,
+    private sanitizer: DomSanitizer
+  ) {}
 
   ngOnInit() {
     this.loadTokens();
@@ -65,7 +70,11 @@ export class DesignSystemComponent implements OnInit {
 
     this.figmaServerService.getComponents(page, this.itemsPerPage, this.searchTerm).subscribe({
       next: (response: PaginatedResponse<FigmaComponent>) => {
-        this.components = response.data;
+        // Initialize activePreviewTab for each component
+        this.components = response.data.map(component => ({
+          ...component,
+          activePreviewTab: 'image' as 'image' | 'html'
+        }));
         this.totalItems = response.pagination.total;
         this.totalPages = response.pagination.totalPages;
         this.isLoadingComponents = false;
@@ -195,5 +204,160 @@ export class DesignSystemComponent implements OnInit {
   getComponentPreview(component: FigmaComponent): string {
     // This would typically show a preview image
     return `Component: ${component.name}`;
+  }
+
+  /**
+   * Get component properties count
+   */
+  getComponentPropertiesCount(component: FigmaComponent): number {
+    return component.properties ? Object.keys(component.properties).length : 0;
+  }
+
+  /**
+   * Set component preview tab
+   */
+  setComponentPreviewTab(component: FigmaComponent, tab: 'image' | 'html') {
+    component.activePreviewTab = tab;
+    // Don't auto-generate HTML preview - let the iframe load it when needed
+  }
+
+  /**
+   * Get component HTML preview URL
+   */
+  getComponentHtmlPreviewUrl(component: FigmaComponent): SafeResourceUrl {
+    if (!component) {
+      return this.sanitizer.bypassSecurityTrustResourceUrl('');
+    }
+    // Encode the component ID to handle colons and special characters
+    const encodedId = encodeURIComponent(component.id);
+    const url = `http://localhost:3200/api/mcp/figma/component-html-preview/${encodedId}`;
+    return this.sanitizer.bypassSecurityTrustResourceUrl(url);
+  }
+
+  /**
+   * Load HTML preview for component
+   */
+  loadComponentHtmlPreview(component: FigmaComponent) {
+    if (!component) {
+      return;
+    }
+    
+    console.log('🔄 Loading HTML preview for component:', component.name);
+    
+    // Set the HTML preview URL and mark as loaded
+    component.htmlPreviewUrl = this.loadComponentHtmlPreviewUrl(component);
+    component.htmlPreviewLoaded = true;
+  }
+
+  /**
+   * Get HTML preview URL for component
+   */
+  loadComponentHtmlPreviewUrl(component: FigmaComponent): SafeResourceUrl {
+    if (!component) {
+      return this.sanitizer.bypassSecurityTrustResourceUrl('');
+    }
+    // Encode the component ID to handle colons and special characters
+    const encodedId = encodeURIComponent(component.id);
+    const url = `http://localhost:3200/api/mcp/figma/component-html-preview/${encodedId}?t=${Date.now()}`;
+    return this.sanitizer.bypassSecurityTrustResourceUrl(url);
+  }
+
+  /**
+   * Generate component HTML preview
+   */
+  generateComponentHtmlPreview(component: FigmaComponent) {
+    if (!component) {
+      return;
+    }
+    
+    console.log('🌐 Generating HTML preview for component:', component.name);
+    // The actual HTML generation will be handled by the backend when the iframe loads
+  }
+
+  /**
+   * Refresh component HTML preview
+   */
+  refreshComponentHtmlPreview(component: FigmaComponent) {
+    console.log('🔄 Refreshing component HTML preview for:', component.name);
+    
+    // Clear the cache for this component and force regeneration
+    this.figmaServerService.clearComponentHtmlPreviewCache(component.id).subscribe({
+      next: (response: any) => {
+        console.log('🗑️ Cache cleared for component:', component.name);
+        // Force regeneration by updating the URL with a new timestamp
+        component.htmlPreviewUrl = this.loadComponentHtmlPreviewUrl(component);
+      },
+      error: (error: any) => {
+        console.error('❌ Error clearing cache:', error);
+      }
+    });
+  }
+
+  /**
+   * Export component HTML
+   */
+  exportComponentHtml(component: FigmaComponent) {
+    if (!component) {
+      return;
+    }
+    
+    console.log('📥 Exporting component HTML for:', component.name);
+    // Encode the component ID to handle colons and special characters
+    const encodedId = encodeURIComponent(component.id);
+    const url = `http://localhost:3200/api/mcp/figma/component-html-preview/${encodedId}/export`;
+    window.open(url, '_blank');
+  }
+
+  /**
+   * Generate Angular component
+   */
+  generateAngularComponent(component: FigmaComponent) {
+    if (!component) {
+      return;
+    }
+    
+    console.log('⚡ Generating Angular component for:', component.name);
+    
+    this.figmaServerService.generateAngularComponent(component.id).subscribe({
+      next: (response) => {
+        console.log('✅ Angular component generated successfully:', response);
+        alert(`Angular component "${component.name}" generated successfully!`);
+      },
+      error: (error) => {
+        console.error('❌ Error generating Angular component:', error);
+        alert(`Error generating Angular component: ${error.message}`);
+      }
+    });
+  }
+
+  /**
+   * Regenerate all component HTML previews
+   */
+  regenerateAllComponentPreviews() {
+    if (this.isRegeneratingAll) {
+      return;
+    }
+    
+    this.isRegeneratingAll = true;
+    console.log('🔄 Regenerating all component HTML previews...');
+    
+    this.figmaServerService.clearAllComponentHtmlPreviewCache().subscribe({
+      next: (response: any) => {
+        console.log('🗑️ All component HTML preview caches cleared');
+        
+        // Force reload of all components to trigger regeneration
+        this.loadComponents(this.currentPage);
+        
+        // Reset the flag after a delay to allow for regeneration
+        setTimeout(() => {
+          this.isRegeneratingAll = false;
+          console.log('✅ All component HTML previews regenerated');
+        }, 2000);
+      },
+      error: (error: any) => {
+        console.error('❌ Error clearing all component caches:', error);
+        this.isRegeneratingAll = false;
+      }
+    });
   }
 } 

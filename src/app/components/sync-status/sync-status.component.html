@@ -1,10 +1,14 @@
-<div class="sync-status">
+<div class="sync-status-card">
   <div class="sync-header">
-    <h3>Figma Sync Status</h3>
-    <button class="sync-button" (click)="startSync()" [disabled]="syncStatus.isSyncing">
-      <span *ngIf="!syncStatus.isSyncing">🔄 Sync Now</span>
-      <span *ngIf="syncStatus.isSyncing">⏳ Syncing...</span>
-    </button>
+    <h3>🔄 Figma Sync Status</h3>
+    <div class="sync-actions">
+      <button 
+        class="sync-button" 
+        [disabled]="syncStatus.isSyncing"
+        (click)="startSync()">
+        {{ syncStatus.isSyncing ? 'Syncing...' : 'Sync Now' }}
+      </button>
+    </div>
   </div>
 
   <div class="sync-info">
@@ -14,32 +18,97 @@
         {{ getSyncStatusText() }}
       </span>
     </div>
-
-    <!-- Progress bar for syncing -->
     <div *ngIf="syncStatus.isSyncing" class="progress-container">
       <div class="progress-bar">
         <div class="progress-fill" [style.width.%]="syncStatus.syncProgress"></div>
       </div>
       <span class="progress-text">{{ syncStatus.syncProgress }}%</span>
     </div>
-
     <div class="data-counts">
-      <div class="count-item">
-        <span class="count-label">Tokens:</span>
-        <span class="count-value">{{ syncStatus.dataCounts.tokens }}</span>
+      <span class="count-item">🎨 {{ syncStatus.dataCounts.tokens }} tokens</span>
+      <span class="count-item">🧩 {{ syncStatus.dataCounts.components }} components</span>
+      <span class="count-item">📄 {{ syncStatus.dataCounts.pages }} pages</span>
+    </div>
+  </div>
+
+  <!-- API Usage Monitor -->
+  <div class="api-usage-section">
+    <div class="section-header">
+      <h4>📊 API Usage</h4>
+      <span class="status-badge" [class]="syncStatus.apiUsage.canMakeCalls ? 'safe' : 'warning'">
+        {{ syncStatus.apiUsage.canMakeCalls ? '🟢 Safe' : '🟡 Warning' }}
+      </span>
+    </div>
+    
+    <div class="api-stats">
+      <div class="stat-item">
+        <span class="stat-label">Calls this hour:</span>
+        <span class="stat-value">{{ syncStatus.apiUsage.callsThisHour }}/{{ syncStatus.apiUsage.maxCallsPerHour }}</span>
       </div>
-      <div class="count-item">
-        <span class="count-label">Components:</span>
-        <span class="count-value">{{ syncStatus.dataCounts.components }}</span>
+      <div class="stat-item">
+        <span class="stat-label">Remaining calls:</span>
+        <span class="stat-value" [class]="syncStatus.apiUsage.remainingCalls < 100 ? 'warning' : 'safe'">
+          {{ syncStatus.apiUsage.remainingCalls }}
+        </span>
       </div>
-      <div class="count-item">
-        <span class="count-label">Pages:</span>
-        <span class="count-value">{{ syncStatus.dataCounts.pages }}</span>
+      <div class="stat-item">
+        <span class="stat-label">Cache status:</span>
+        <span class="stat-value" [class]="syncStatus.cacheStatus.isValid ? 'safe' : 'warning'">
+          {{ syncStatus.cacheStatus.isValid ? '🟢 Valid' : '🟡 Expired' }}
+        </span>
       </div>
     </div>
   </div>
 
-  <div *ngIf="syncStatus.syncError" class="sync-error">
-    <span class="error-text">❌ {{ syncStatus.syncError }}</span>
+           <!-- Auto-Sync Controls -->
+         <div class="auto-sync-section">
+           <div class="auto-sync-header">
+             <h4>🤖 Auto-Sync (Safe Mode)</h4>
+             <button 
+               class="auto-sync-toggle" 
+               [class.enabled]="autoSyncStatus?.enabled"
+               [disabled]="!syncStatus.canEnableAutoSync"
+               (click)="toggleAutoSync()">
+               {{ autoSyncStatus?.enabled ? 'ON' : 'OFF' }}
+             </button>
+           </div>
+           
+           <!-- Development Mode Warning -->
+           <div class="dev-mode-warning" *ngIf="syncStatus.developmentMode && !syncStatus.canEnableAutoSync">
+             <div class="warning-message">
+               <span class="warning-icon">⚠️</span>
+               <span>Auto-sync disabled in development mode for safety</span>
+             </div>
+             <div class="warning-help">
+               <small>To enable: Set DEV_DISABLE_AUTO_SYNC=false in server/.env</small>
+             </div>
+           </div>
+    
+    <div class="auto-sync-controls" *ngIf="autoSyncStatus?.enabled">
+      <div class="interval-control">
+        <label>Check every:</label>
+        <input 
+          type="number" 
+          [value]="autoSyncStatus.interval / 1000"
+          (change)="onIntervalChange($event)"
+          min="2" 
+          max="60"
+          class="interval-input">
+        <span>minutes (min: 2)</span>
+      </div>
+    </div>
+
+    <div class="auto-sync-status">
+      <div class="status-item">
+        <span class="status-label">Status:</span>
+        <span class="status-value" [class]="autoSyncStatus?.enabled ? 'active' : 'inactive'">
+          {{ autoSyncStatus?.enabled ? '🟢 Active' : '🔴 Inactive' }}
+        </span>
+      </div>
+      <div class="status-item" *ngIf="autoSyncStatus?.lastAutoSync">
+        <span class="status-label">Last auto-sync:</span>
+        <span class="status-value">{{ autoSyncStatus?.lastAutoSync | date:'short' }}</span>
+      </div>
+    </div>
   </div>
 </div> 
