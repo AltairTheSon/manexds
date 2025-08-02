@@ -1,6 +1,6 @@
 <div class="sync-status-card">
   <div class="sync-header">
-    <h3>🔄 Figma Sync Status</h3>
+    <h3>Figma Sync Status</h3>
     <div class="sync-actions">
       <button 
         class="sync-button" 
@@ -25,18 +25,18 @@
       <span class="progress-text">{{ syncStatus.syncProgress }}%</span>
     </div>
     <div class="data-counts">
-      <span class="count-item">🎨 {{ syncStatus.dataCounts.tokens }} tokens</span>
-      <span class="count-item">🧩 {{ syncStatus.dataCounts.components }} components</span>
-      <span class="count-item">📄 {{ syncStatus.dataCounts.pages }} pages</span>
+              <span class="count-item">{{ syncStatus.dataCounts.tokens }} tokens</span>
+        <span class="count-item">{{ syncStatus.dataCounts.components }} components</span>
+        <span class="count-item">{{ syncStatus.dataCounts.pages }} pages</span>
     </div>
   </div>
 
   <!-- API Usage Monitor -->
   <div class="api-usage-section">
     <div class="section-header">
-      <h4>📊 API Usage</h4>
+      <h4>API Usage</h4>
       <span class="status-badge" [class]="syncStatus.apiUsage.canMakeCalls ? 'safe' : 'warning'">
-        {{ syncStatus.apiUsage.canMakeCalls ? '🟢 Safe' : '🟡 Warning' }}
+                  {{ syncStatus.apiUsage.canMakeCalls ? 'Safe' : 'Warning' }}
       </span>
     </div>
     
@@ -76,7 +76,7 @@
            <!-- Development Mode Warning -->
            <div class="dev-mode-warning" *ngIf="syncStatus.developmentMode && !syncStatus.canEnableAutoSync">
              <div class="warning-message">
-               <span class="warning-icon">⚠️</span>
+               <span class="warning-icon">Warning</span>
                <span>Auto-sync disabled in development mode for safety</span>
              </div>
              <div class="warning-help">

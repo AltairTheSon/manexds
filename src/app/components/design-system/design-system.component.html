@@ -21,21 +21,21 @@
       [class.active]="activeTab === 'tokens'"
       (click)="onTabChange('tokens')"
     >
-      🎨 Design Tokens
+              Design Tokens
     </button>
     <button 
       class="tab-button" 
       [class.active]="activeTab === 'components'"
       (click)="onTabChange('components')"
     >
-      🧩 Components
+              Components
     </button>
     <button 
       class="tab-button" 
       [class.active]="activeTab === 'pages'"
       (click)="onTabChange('pages')"
     >
-      📄 Pages
+              Pages
     </button>
   </div>
 
@@ -68,7 +68,7 @@
           (click)="regenerateAllComponentPreviews()"
           [disabled]="isRegeneratingAll"
         >
-          🔄 {{ isRegeneratingAll ? 'Regenerating...' : 'Regenerate All Component Previews' }}
+          {{ isRegeneratingAll ? 'Regenerating...' : 'Regenerate All Component Previews' }}
         </button>
         <p class="regenerate-all-info">
           This will clear all cached HTML previews and regenerate them with the latest design tokens.
@@ -90,7 +90,7 @@
             [class.active]="component.activePreviewTab === 'html'"
             (click)="setComponentPreviewTab(component, 'html')"
           >
-            🌐 HTML
+            HTML
           </button>
         </div>
 
@@ -103,16 +103,16 @@
         <!-- HTML Preview Tab -->
         <div *ngIf="component.activePreviewTab === 'html'" class="component-html-preview">
           <div class="html-preview-header">
-            <h5>🌐 HTML Preview - {{ component.name }}</h5>
+            <h5>HTML Preview - {{ component.name }}</h5>
             <div class="html-preview-controls">
               <button class="control-button" (click)="refreshComponentHtmlPreview(component)">
-                🔄 Refresh
+                                  Refresh
               </button>
               <button class="control-button" (click)="exportComponentHtml(component)">
-                📥 Export
+                                  Export
               </button>
               <button class="control-button" (click)="generateAngularComponent(component)">
-                ⚡ Generate Angular
+                                  Generate Angular
               </button>
             </div>
           </div>
@@ -124,7 +124,7 @@
                 class="load-preview-button" 
                 (click)="loadComponentHtmlPreview(component)"
               >
-                🔄 Load Preview
+                Load Preview
               </button>
             </div>
             <iframe 
@@ -167,7 +167,7 @@
       <div *ngFor="let page of pages" class="page-card">
         <div class="page-preview">
           <img *ngIf="page.preview" [src]="page.preview" [alt]="page.name" class="preview-image" />
-          <div *ngIf="!page.preview" class="preview-placeholder">📄 {{ page.name }}</div>
+          <div *ngIf="!page.preview" class="preview-placeholder">{{ page.name }}</div>
         </div>
         <div class="page-info">
           <h4 class="page-name">{{ page.name }}</h4>

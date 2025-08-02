@@ -1,7 +1,7 @@
 <div class="flow-viewer-container">
   <!-- Header -->
   <div class="flow-viewer-header">
-    <h2>🎯 Interactive Flow Viewer</h2>
+    <h2>Interactive Flow Viewer</h2>
     <p>Click on pages to view them and interact with elements</p>
   </div>
 
@@ -13,7 +13,7 @@
 
   <!-- Error State -->
   <div *ngIf="error" class="error-state">
-    <p>❌ {{ error }}</p>
+          <p>Error: {{ error }}</p>
     <button (click)="loadContainers()" class="retry-button">Retry</button>
   </div>
 
@@ -22,15 +22,15 @@
     <!-- Page Thumbnails Sidebar -->
     <div class="page-sidebar">
       <div class="sidebar-header">
-        <h3>📁 Containers ({{ getContainerPages().length }})</h3>
+        <h3>Containers ({{ getContainerPages().length }})</h3>
       </div>
       
       <div class="page-stats">
         <span class="stat">
-          📁 {{ getContainerPages().length }} containers
+          {{ getContainerPages().length }} containers
         </span>
         <span class="stat" *ngIf="currentContainer">
-          📄 {{ getIndividualPages().length }} pages in {{ currentContainer.name }}
+                      {{ getIndividualPages().length }} pages in {{ currentContainer.name }}
         </span>
       </div>
 
@@ -56,7 +56,7 @@
       
       <!-- Individual Pages (when container is selected) -->
       <div class="page-thumbnails" *ngIf="currentContainer && getIndividualPages().length > 0">
-        <h4>📄 Pages in {{ currentContainer.name }}</h4>
+        <h4>Pages in {{ currentContainer.name }}</h4>
         <div 
           *ngFor="let page of getIndividualPages()" 
           class="page-thumbnail individual"
@@ -89,7 +89,7 @@
               🖱️ {{ getClickableElements().length }} clickable
             </span>
             <span class="stat">
-              🧩 {{ getComponentInstances().length }} components
+              {{ getComponentInstances().length }} components
             </span>
             <span class="stat">
               🔗 {{ getNavigationElements().length }} navigation
@@ -111,7 +111,7 @@
             [class.active]="activeTab === 'html'"
             (click)="setActiveTab('html')"
           >
-            🌐 HTML Preview
+            HTML Preview
           </button>
         </div>
 
@@ -146,13 +146,13 @@
         <div *ngIf="activeTab === 'html'" class="tab-content">
           <div class="html-preview">
             <div class="preview-header">
-              <h4>🌐 HTML Preview - {{ currentPage.name }}</h4>
+              <h4>HTML Preview - {{ currentPage.name }}</h4>
               <div class="preview-controls">
                 <button class="control-button" (click)="refreshHtmlPreview()">
-                  🔄 Refresh
+                                      Refresh
                 </button>
                 <button class="control-button" (click)="exportHtmlPreview()">
-                  📥 Export HTML
+                                      Export HTML
                 </button>
               </div>
             </div>
@@ -168,8 +168,8 @@
             <div class="preview-info">
               <p><strong>Preview Info:</strong></p>
               <ul>
-                <li>📏 Dimensions: {{ currentPage.bounds?.width }}×{{ currentPage.bounds?.height }}</li>
-                <li>🧩 Components: {{ getComponentInstances().length }}</li>
+                              <li>Dimensions: {{ currentPage.bounds?.width }}×{{ currentPage.bounds?.height }}</li>
+              <li>Components: {{ getComponentInstances().length }}</li>
                 <li>🖱️ Interactive Elements: {{ getClickableElements().length }}</li>
                 <li>🔗 Navigation: {{ getNavigationElements().length }}</li>
               </ul>
@@ -195,7 +195,7 @@
           </div>
 
           <div class="detail-section">
-            <h4>🧩 Component Instances</h4>
+            <h4>Component Instances</h4>
             <div class="elements-list">
               <div 
                 *ngFor="let component of getComponentInstances()" 

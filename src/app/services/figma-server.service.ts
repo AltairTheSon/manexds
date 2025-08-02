@@ -213,7 +213,7 @@ export class FigmaServerService {
         return response.success;
       }),
       catchError(error => {
-        console.error('❌ Failed to initialize server connection:', error);
+        console.error('Failed to initialize server connection:', error);
         return of(false);
       })
     );
@@ -236,11 +236,11 @@ export class FigmaServerService {
       syncType
     }).pipe(
       map(response => {
-        console.log('🔄 Server sync started:', response);
+        console.log('Server sync started:', response);
         return { success: response.success, syncId: response.syncId };
       }),
       catchError(error => {
-        console.error('❌ Failed to start server sync:', error);
+                  console.error('Failed to start server sync:', error);
         // Reset syncing state on error
         const currentStatus = this.syncStatusSubject.value;
         this.syncStatusSubject.next({
@@ -263,7 +263,7 @@ export class FigmaServerService {
         return status;
       }),
       catchError(error => {
-        console.error('❌ Failed to get sync status:', error);
+        console.error('Failed to get sync status:', error);
         return of(this.syncStatusSubject.value);
       })
     );
@@ -280,7 +280,7 @@ export class FigmaServerService {
 
     return this.http.get<PaginatedResponse<FigmaDesignToken>>(url).pipe(
       catchError(error => {
-        console.error('❌ Failed to get design tokens:', error);
+        console.error('Failed to get design tokens:', error);
         return of({ data: [], pagination: { page: 1, limit: 100, total: 0, totalPages: 0 } });
       })
     );
@@ -297,7 +297,7 @@ export class FigmaServerService {
 
     return this.http.get<PaginatedResponse<FigmaComponent>>(url).pipe(
       catchError(error => {
-        console.error('❌ Failed to get components:', error);
+        console.error('Failed to get components:', error);
         return of({ data: [], pagination: { page: 1, limit: 100, total: 0, totalPages: 0 } });
       })
     );
@@ -314,7 +314,7 @@ export class FigmaServerService {
 
     return this.http.get<PaginatedResponse<FigmaPage>>(url).pipe(
       catchError(error => {
-        console.error('❌ Failed to get pages:', error);
+        console.error('Failed to get pages:', error);
         return of({ data: [], pagination: { page: 1, limit: 100, total: 0, totalPages: 0 } });
       })
     );
@@ -326,7 +326,7 @@ export class FigmaServerService {
   getContainers(): Observable<any[]> {
     return this.http.get<any[]>(`${this.MCP_ENDPOINT}/page-flows`).pipe(
       catchError(error => {
-        console.error('❌ Failed to get containers:', error);
+        console.error('Failed to get containers:', error);
         return of([]);
       })
     );
@@ -338,7 +338,7 @@ export class FigmaServerService {
   getContainerPages(containerId: string): Observable<any[]> {
     return this.http.get<any[]>(`${this.MCP_ENDPOINT}/container/${containerId}/pages`).pipe(
       catchError(error => {
-        console.error('❌ Failed to get container pages:', error);
+        console.error('Failed to get container pages:', error);
         return of([]);
       })
     );
@@ -350,7 +350,7 @@ export class FigmaServerService {
   getTokenById(id: string): Observable<FigmaDesignToken | null> {
     return this.http.get<FigmaDesignToken>(`${this.MCP_ENDPOINT}/token/${id}`).pipe(
       catchError(error => {
-        console.error('❌ Failed to get token:', error);
+        console.error('Failed to get token:', error);
         return of(null);
       })
     );
@@ -362,7 +362,7 @@ export class FigmaServerService {
   getComponentById(id: string): Observable<FigmaComponent | null> {
     return this.http.get<FigmaComponent>(`${this.MCP_ENDPOINT}/component/${id}`).pipe(
       catchError(error => {
-        console.error('❌ Failed to get component:', error);
+        console.error('Failed to get component:', error);
         return of(null);
       })
     );
@@ -374,7 +374,7 @@ export class FigmaServerService {
   getPageById(id: string): Observable<FigmaPage | null> {
     return this.http.get<FigmaPage>(`${this.MCP_ENDPOINT}/page/${id}`).pipe(
       catchError(error => {
-        console.error('❌ Failed to get page:', error);
+        console.error('Failed to get page:', error);
         return of(null);
       })
     );
@@ -390,7 +390,7 @@ export class FigmaServerService {
       outputPath
     }).pipe(
       catchError(error => {
-        console.error('❌ Failed to generate component:', error);
+        console.error('Failed to generate component:', error);
         return of(null);
       })
     );
@@ -402,7 +402,7 @@ export class FigmaServerService {
   generateAngularPage(pageId: string): Observable<any> {
     return this.http.post(`${this.MCP_ENDPOINT}/generate-page`, { pageId }).pipe(
       catchError(error => {
-        console.error('❌ Failed to generate page:', error);
+        console.error('Failed to generate page:', error);
         return of(null);
       })
     );

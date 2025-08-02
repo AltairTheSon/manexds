@@ -2,7 +2,7 @@
   <!-- Header -->
   <div class="header">
     <div class="header-content">
-      <h1>🎨 Enhanced Design System</h1>
+      <h1>Enhanced Design System</h1>
       <p>Advanced token and component management with relationship tracking</p>
     </div>
     <div class="header-actions">
@@ -10,8 +10,8 @@
         class="btn btn-primary" 
         (click)="startEnhancedSync()" 
         [disabled]="loading">
-        <span *ngIf="loading">🔄 Syncing...</span>
-        <span *ngIf="!loading">🔄 Start Enhanced Sync</span>
+        <span *ngIf="loading">Syncing...</span>
+        <span *ngIf="!loading">Start Enhanced Sync</span>
       </button>
     </div>
   </div>
@@ -19,7 +19,7 @@
   <!-- Error Display -->
   <div *ngIf="error" class="error-banner">
     <div class="error-content">
-      <span class="error-icon">❌</span>
+              <span class="error-icon">Error</span>
       <span class="error-message">{{ error }}</span>
       <button class="error-dismiss" (click)="error = null">×</button>
     </div>
@@ -41,7 +41,7 @@
       <div class="filters">
         <!-- File Selection -->
         <div class="filter-group">
-          <label>📁 Figma File:</label>
+          <label>Figma File:</label>
           <select 
             [value]="getSelectedFileId()" 
             (change)="onFileChange($event)">
@@ -63,7 +63,7 @@
 
         <!-- Token Type Filter -->
         <div class="filter-group" *ngIf="activeTab === 'tokens'">
-          <label>🎨 Token Type:</label>
+          <label>Token Type:</label>
           <select 
             [value]="selectedTokenType" 
             (change)="onTokenTypeChange($event)">
@@ -93,13 +93,13 @@
         class="tab-btn" 
         [class.active]="activeTab === 'tokens'"
         (click)="onTabChange('tokens')">
-        🎨 Tokens ({{ filteredTokens.length }})
+        Tokens ({{ filteredTokens.length }})
       </button>
       <button 
         class="tab-btn" 
         [class.active]="activeTab === 'components'"
         (click)="onTabChange('components')">
-        🧩 Components ({{ filteredComponents.length }})
+        Components ({{ filteredComponents.length }})
       </button>
       <button 
         class="tab-btn" 

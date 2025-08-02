@@ -14,17 +14,17 @@ export class NavigationComponent {
     },
     {
       path: '/design-system',
-      label: '🎨 Design System',
+      label: 'Design System',
       description: 'Basic Design Tokens & Components'
     },
     {
       path: '/flow-viewer',
-      label: '📱 Flow Viewer',
+      label: 'Flow Viewer',
       description: 'Page Flows & Navigation'
     },
     {
       path: '/sync-status',
-      label: '🔄 Sync Status',
+      label: 'Sync Status',
       description: 'Figma Sync & Status'
     }
   ];

@@ -273,30 +273,30 @@ export class EnhancedDesignSystemComponent implements OnInit, OnDestroy {
 
   getTokenTypeIcon(type: string): string {
     switch (type) {
-      case 'color': return '🎨';
-      case 'typography': return '📝';
-      case 'spacing': return '📏';
-      case 'borderRadius': return '🔲';
-      case 'shadow': return '🌑';
-      case 'effect': return '✨';
-      default: return '📋';
+      case 'color': return 'Color';
+      case 'typography': return 'Typography';
+      case 'spacing': return 'Spacing';
+      case 'borderRadius': return 'Border Radius';
+      case 'shadow': return 'Shadow';
+      case 'effect': return 'Effect';
+      default: return 'Other';
     }
   }
 
   getComponentTypeIcon(type: string): string {
     switch (type) {
-      case 'COMPONENT': return '🧩';
-      case 'COMPONENT_SET': return '📦';
-      default: return '📋';
+      case 'COMPONENT': return 'Component';
+      case 'COMPONENT_SET': return 'Component Set';
+      default: return 'Other';
     }
   }
 
   getFileTypeIcon(type: string): string {
     switch (type) {
-      case 'design-system': return '🎨';
-      case 'application': return '📱';
-      case 'prototype': return '🎯';
-      default: return '📁';
+      case 'design-system': return 'Design System';
+      case 'application': return 'Application';
+      case 'prototype': return 'Prototype';
+      default: return 'File';
     }
   }
 } 
