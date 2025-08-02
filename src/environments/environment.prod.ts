@@ -5,6 +5,6 @@ export const environment = {
     // Production access token should be set via environment variables
   },
   mcpServer: {
-    baseUrl: '/.netlify/functions/api/api/mcp/figma'
+    baseUrl: '/.netlify/functions/api'
   }
 }; 

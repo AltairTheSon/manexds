@@ -1,0 +1,133 @@
+<div class="figma-connector">
+  <div class="connector-container">
+    <div class="connector-header">
+      <h2>Connect to Figma</h2>
+      <p>Enter your Figma credentials to load your design system</p>
+    </div>
+
+    <form [formGroup]="connectionForm" (ngSubmit)="connectToFigma()" class="connection-form">
+      
+      <!-- Access Token Field -->
+      <div class="form-group">
+        <label for="accessToken">Figma Access Token *</label>
+        <input 
+          type="password" 
+          id="accessToken"
+          formControlName="accessToken"
+          placeholder="figd_..."
+          class="form-control"
+          [class.error]="connectionForm.get('accessToken')?.invalid && connectionForm.get('accessToken')?.touched"
+        />
+        <div class="help-text" *ngIf="connectionForm.get('accessToken')?.invalid && connectionForm.get('accessToken')?.touched">
+          Access token is required
+        </div>
+        <div class="help-link">
+          <button type="button" class="help-button" (click)="getAccessTokenHelp()">
+            How to get access token
+          </button>
+        </div>
+      </div>
+
+      <!-- File ID Field -->
+      <div class="form-group">
+        <label for="fileId">Figma File ID *</label>
+        <input 
+          type="text" 
+          id="fileId"
+          formControlName="fileId"
+          placeholder="6zbyXDOYjJsJW52P6iZ3hL"
+          class="form-control"
+          [class.error]="connectionForm.get('fileId')?.invalid && connectionForm.get('fileId')?.touched"
+        />
+        <div class="help-text" *ngIf="connectionForm.get('fileId')?.invalid && connectionForm.get('fileId')?.touched">
+          File ID is required
+        </div>
+        <div class="help-link">
+          <button type="button" class="help-button" (click)="getFileIdHelp()">
+            How to find file ID
+          </button>
+        </div>
+      </div>
+
+      <!-- Team ID Field (Optional) -->
+      <div class="form-group">
+        <label for="teamId">Team ID (Optional)</label>
+        <input 
+          type="text" 
+          id="teamId"
+          formControlName="teamId"
+          placeholder="Leave empty for personal files"
+          class="form-control"
+        />
+        <div class="help-text">
+          Only needed for team files. Leave empty for personal files.
+        </div>
+      </div>
+
+      <!-- Connection Status -->
+      <div class="connection-status" *ngIf="connectionStatus !== 'idle'">
+        <div class="status-message" [class]="connectionStatus">
+          <div class="status-icon">
+            <span *ngIf="connectionStatus === 'connecting'">Connecting...</span>
+            <span *ngIf="connectionStatus === 'success'">Success</span>
+            <span *ngIf="connectionStatus === 'error'">Error</span>
+          </div>
+          <div class="status-text">
+            <p *ngIf="connectionStatus === 'connecting'">Testing connection to Figma...</p>
+            <p *ngIf="connectionStatus === 'success'" class="success-message">{{ successMessage }}</p>
+            <p *ngIf="connectionStatus === 'error'" class="error-message">{{ errorMessage }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="form-actions">
+        <button 
+          type="submit" 
+          class="btn btn-primary"
+          [disabled]="connectionForm.invalid || isConnecting"
+        >
+          <span *ngIf="!isConnecting">Connect to Figma</span>
+          <span *ngIf="isConnecting">Connecting...</span>
+        </button>
+        
+        <button 
+          type="button" 
+          class="btn btn-secondary"
+          (click)="resetForm()"
+          [disabled]="isConnecting"
+        >
+          Reset
+        </button>
+      </div>
+
+    </form>
+
+    <!-- Help Section -->
+    <div class="help-section">
+      <h3>Need Help?</h3>
+      <div class="help-content">
+        <div class="help-item">
+          <h4>Getting Your Access Token</h4>
+          <ol>
+            <li>Go to Figma.com and sign in</li>
+            <li>Click on your profile icon in the top right</li>
+            <li>Go to Settings > Account</li>
+            <li>Scroll down to Personal access tokens</li>
+            <li>Click "Generate new token"</li>
+            <li>Give it a name and copy the token</li>
+          </ol>
+        </div>
+        
+        <div class="help-item">
+          <h4>Finding Your File ID</h4>
+          <ol>
+            <li>Open your Figma file in the browser</li>
+            <li>Look at the URL: https://www.figma.com/file/FILE_ID/...</li>
+            <li>Copy the FILE_ID part (long string of letters and numbers)</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

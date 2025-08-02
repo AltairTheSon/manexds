@@ -6,15 +6,17 @@ import { DesignSystemComponent } from './components/design-system/design-system.
 import { FlowViewerComponent } from './components/flow-viewer/flow-viewer.component';
 import { SyncStatusComponent } from './components/sync-status/sync-status.component';
 import { EnhancedDesignSystemComponent } from './components/enhanced-design-system/enhanced-design-system.component';
+import { FigmaConnectorComponent } from './components/figma-connector/figma-connector.component';
 
 const routes: Routes = [
-  { path: '', redirectTo: '/dashboard', pathMatch: 'full' },
+  { path: '', redirectTo: '/connect', pathMatch: 'full' },
+  { path: 'connect', component: FigmaConnectorComponent },
   { path: 'dashboard', component: EnhancedDesignSystemComponent },
   { path: 'design-system', component: DesignSystemComponent },
   { path: 'flow-viewer', component: FlowViewerComponent },
   { path: 'sync-status', component: SyncStatusComponent },
   { path: 'enhanced-design-system', component: EnhancedDesignSystemComponent },
-  { path: '**', redirectTo: '/dashboard' }
+  { path: '**', redirectTo: '/connect' }
 ];
 
 @NgModule({

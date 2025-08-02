@@ -6,6 +6,6 @@ export const environment = {
     // accessToken: 'your-figma-access-token-here'
   },
   mcpServer: {
-    baseUrl: '/.netlify/functions/api/api/mcp/figma'
+    baseUrl: '/.netlify/functions/api'
   }
 }; 

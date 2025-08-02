@@ -66,7 +66,7 @@ app.get('/health', (req, res) => {
 });
 
 // Sync status endpoint
-app.get('/api/mcp/figma/sync-status', (req, res) => {
+app.get('/sync-status', (req, res) => {
   res.json({
     isSyncing: false,
     syncProgress: 100,
@@ -100,7 +100,7 @@ app.get('/api/mcp/figma/sync-status', (req, res) => {
 });
 
 // Files endpoint
-app.get('/api/mcp/figma/files', async (req, res) => {
+app.get('/files', async (req, res) => {
   try {
     if (!FIGMA_ACCESS_TOKEN) {
       return res.json([]);
@@ -126,7 +126,7 @@ app.get('/api/mcp/figma/files', async (req, res) => {
 });
 
 // Enhanced tokens endpoint
-app.get('/api/mcp/figma/enhanced/tokens', async (req, res) => {
+app.get('/enhanced/tokens', async (req, res) => {
   try {
     if (!FIGMA_ACCESS_TOKEN) {
       return res.json([]);
@@ -163,7 +163,7 @@ app.get('/api/mcp/figma/enhanced/tokens', async (req, res) => {
 });
 
 // Enhanced components endpoint
-app.get('/api/mcp/figma/enhanced/components', async (req, res) => {
+app.get('/enhanced/components', async (req, res) => {
   try {
     if (!FIGMA_ACCESS_TOKEN) {
       return res.json([]);
@@ -214,7 +214,7 @@ app.get('/api/mcp/figma/enhanced/components', async (req, res) => {
 });
 
 // Sync endpoint
-app.post('/api/mcp/figma/enhanced/sync', async (req, res) => {
+app.post('/enhanced/sync', async (req, res) => {
   try {
     if (!FIGMA_ACCESS_TOKEN) {
       return res.status(400).json({ 

@@ -1,6 +1,6 @@
 import { NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
-import { FormsModule } from '@angular/forms';
+import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { HttpClientModule } from '@angular/common/http';
 import { AppRoutingModule } from './app-routing.module';
 
@@ -10,6 +10,7 @@ import { DesignSystemComponent } from './components/design-system/design-system.
 import { FlowViewerComponent } from './components/flow-viewer/flow-viewer.component';
 import { EnhancedDesignSystemComponent } from './components/enhanced-design-system/enhanced-design-system.component';
 import { NavigationComponent } from './components/navigation/navigation.component';
+import { FigmaConnectorComponent } from './components/figma-connector/figma-connector.component';
 
 @NgModule({
   declarations: [
@@ -18,11 +19,13 @@ import { NavigationComponent } from './components/navigation/navigation.componen
     DesignSystemComponent,
     FlowViewerComponent,
     EnhancedDesignSystemComponent,
-    NavigationComponent
+    NavigationComponent,
+    FigmaConnectorComponent
   ],
   imports: [
     BrowserModule,
     FormsModule,
+    ReactiveFormsModule,
     HttpClientModule,
     AppRoutingModule
   ],

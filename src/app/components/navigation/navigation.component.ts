@@ -8,8 +8,13 @@ import { Component } from '@angular/core';
 export class NavigationComponent {
   navItems = [
     {
+      path: '/connect',
+      label: 'Connect Figma',
+      description: 'Connect to your Figma file'
+    },
+    {
       path: '/dashboard',
-      label: '🏠 Dashboard',
+      label: 'Dashboard',
       description: 'Enhanced Design System Overview'
     },
     {
