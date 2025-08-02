@@ -50,13 +50,13 @@ Added comprehensive budget types to prevent future build issues:
   "type": "bundle",
   "maximumWarning": "2mb",
   "maximumError": "5mb"
-},
-{
-  "type": "total",
-  "maximumWarning": "2mb",
-  "maximumError": "5mb"
 }
 ```
+
+**Note**: Only valid Angular budget types are used:
+- `initial`: Initial bundle size
+- `anyComponentStyle`: Component style file sizes
+- `bundle`: Individual bundle sizes
 
 ## 🎯 **Result**
 - ✅ Build should now pass on Netlify
