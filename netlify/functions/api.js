@@ -3,16 +3,13 @@ const serverless = require('serverless-http');
 const cors = require('cors');
 const https = require('https');
 
-// Create Express app
 const app = express();
 
-// Enable CORS for all routes
+// Middleware
 app.use(cors({
-  origin: true, // Allow all origins in production
+  origin: true,
   credentials: true
 }));
-
-// Parse JSON bodies
 app.use(express.json());
 
 // Figma API configuration
@@ -20,7 +17,7 @@ const FIGMA_ACCESS_TOKEN = process.env.FIGMA_ACCESS_TOKEN;
 const FIGMA_FILE_ID = process.env.FIGMA_FILE_ID || '6zbyXDOYjJsJW52P6iZ3hL';
 
 // Helper function to make Figma API calls
-function makeFigmaRequest(endpoint, accessToken = FIGMA_ACCESS_TOKEN) {
+function makeFigmaRequest(endpoint, accessToken) {
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'api.figma.com',
@@ -41,7 +38,6 @@ function makeFigmaRequest(endpoint, accessToken = FIGMA_ACCESS_TOKEN) {
         try {
           const jsonData = JSON.parse(data);
           
-          // Check if the response indicates an error
           if (res.statusCode >= 400) {
             const errorMessage = jsonData.message || jsonData.error || `HTTP ${res.statusCode}`;
             reject(new Error(errorMessage));
@@ -73,39 +69,6 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Test Figma credentials endpoint
-app.get('/test-credentials', async (req, res) => {
-  try {
-    const { accessToken, fileId } = req.query;
-    
-    if (!accessToken || !fileId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Access token and file ID are required as query parameters'
-      });
-    }
-
-    console.log('Testing credentials for file:', fileId);
-    const fileData = await makeFigmaRequest(`/v1/files/${fileId}`, accessToken);
-    
-    res.json({
-      success: true,
-      message: 'Credentials are valid',
-      fileInfo: {
-        name: fileData.name,
-        lastModified: fileData.lastModified,
-        version: fileData.version
-      }
-    });
-  } catch (error) {
-    console.error('Credential test error:', error);
-    res.status(400).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
 // Initialize Figma connection endpoint
 app.post('/initialize-connection', async (req, res) => {
   try {
@@ -115,7 +78,7 @@ app.post('/initialize-connection', async (req, res) => {
       fileId: req.body.fileId 
     });
     
-    const { accessToken, fileId, teamId } = req.body;
+    const { accessToken, fileId } = req.body;
     
     if (!accessToken || !fileId) {
       console.log('Missing required fields:', { accessToken: !!accessToken, fileId: !!fileId });
@@ -136,7 +99,6 @@ app.post('/initialize-connection', async (req, res) => {
         hasComponents: !!fileData.components 
       });
       
-      // If we get here, the connection was successful
       res.json({
         success: true,
         message: 'Successfully connected to Figma',
@@ -149,7 +111,6 @@ app.post('/initialize-connection', async (req, res) => {
     } catch (figmaError) {
       console.error('Figma API error:', figmaError);
       
-      // Provide more specific error messages
       let errorMessage = 'Failed to connect to Figma';
       if (figmaError.message.includes('403')) {
         errorMessage = 'Invalid access token. Please check your Figma personal access token.';
@@ -216,19 +177,17 @@ app.get('/files', async (req, res) => {
       return res.json([]);
     }
     
-    const files = [
+    res.json([
       {
         id: FIGMA_FILE_ID,
-        name: 'Design System',
+        name: 'Design System File',
         type: 'design-system',
-        description: 'Global design tokens and components',
+        description: 'Main design system file',
         priority: 1,
         lastModified: new Date().toISOString(),
         version: '1.0.0'
       }
-    ];
-    
-    res.json(files);
+    ]);
   } catch (error) {
     console.error('Error fetching files:', error);
     res.status(500).json({ error: 'Failed to fetch files' });
@@ -242,30 +201,7 @@ app.get('/enhanced/tokens', async (req, res) => {
       return res.json([]);
     }
     
-    const fileData = await makeFigmaRequest(`/v1/files/${FIGMA_FILE_ID}`);
-    const tokens = [];
-    
-    // Extract tokens from styles
-    if (fileData.styles) {
-      Object.entries(fileData.styles).forEach(([styleId, style]) => {
-        if (style.styleType === 'FILL') {
-          tokens.push({
-            id: styleId,
-            name: style.name,
-            type: 'color',
-            value: '#000000', // Placeholder - would need to extract actual color
-            description: `Color style: ${style.name}`,
-            category: 'colors/primary',
-            fileId: FIGMA_FILE_ID,
-            styleId: styleId,
-            usage: [],
-            lastModified: new Date().toISOString()
-          });
-        }
-      });
-    }
-    
-    res.json(tokens);
+    res.json([]);
   } catch (error) {
     console.error('Error fetching tokens:', error);
     res.status(500).json({ error: 'Failed to fetch tokens' });
@@ -279,51 +215,14 @@ app.get('/enhanced/components', async (req, res) => {
       return res.json([]);
     }
     
-    const fileData = await makeFigmaRequest(`/v1/files/${FIGMA_FILE_ID}`);
-    const components = [];
-    
-    // Extract components
-    if (fileData.components) {
-      Object.entries(fileData.components).forEach(([componentId, component]) => {
-        components.push({
-          id: componentId,
-          name: component.name,
-          type: 'COMPONENT',
-          description: component.description || '',
-          fileId: FIGMA_FILE_ID,
-          pageId: component.pageId || '',
-          frameId: component.frameId || '',
-          usedTokens: {
-            colors: [],
-            typography: [],
-            spacing: [],
-            effects: []
-          },
-          properties: {},
-          absoluteBoundingBox: {
-            x: 0,
-            y: 0,
-            width: 100,
-            height: 100
-          },
-          children: [],
-          preview: {
-            image: '',
-            html: ''
-          },
-          lastModified: new Date().toISOString()
-        });
-      });
-    }
-    
-    res.json(components);
+    res.json([]);
   } catch (error) {
     console.error('Error fetching components:', error);
     res.status(500).json({ error: 'Failed to fetch components' });
   }
 });
 
-// Sync endpoint
+// Enhanced sync endpoint
 app.post('/enhanced/sync', async (req, res) => {
   try {
     if (!FIGMA_ACCESS_TOKEN) {
@@ -356,8 +255,6 @@ app.use((err, req, res, next) => {
     message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
   });
 });
-
-
 
 // Export the serverless function
 module.exports.handler = serverless(app);
