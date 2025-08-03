@@ -40,6 +40,14 @@ function makeFigmaRequest(endpoint, accessToken = FIGMA_ACCESS_TOKEN) {
       res.on('end', () => {
         try {
           const jsonData = JSON.parse(data);
+          
+          // Check if the response indicates an error
+          if (res.statusCode >= 400) {
+            const errorMessage = jsonData.message || jsonData.error || `HTTP ${res.statusCode}`;
+            reject(new Error(errorMessage));
+            return;
+          }
+          
           resolve(jsonData);
         } catch (error) {
           reject(new Error('Invalid JSON response'));
@@ -63,6 +71,39 @@ app.get('/health', (req, res) => {
     environment: process.env.NODE_ENV || 'development',
     figmaConfigured: !!FIGMA_ACCESS_TOKEN
   });
+});
+
+// Test Figma credentials endpoint
+app.get('/test-credentials', async (req, res) => {
+  try {
+    const { accessToken, fileId } = req.query;
+    
+    if (!accessToken || !fileId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Access token and file ID are required as query parameters'
+      });
+    }
+
+    console.log('Testing credentials for file:', fileId);
+    const fileData = await makeFigmaRequest(`/v1/files/${fileId}`, accessToken);
+    
+    res.json({
+      success: true,
+      message: 'Credentials are valid',
+      fileInfo: {
+        name: fileData.name,
+        lastModified: fileData.lastModified,
+        version: fileData.version
+      }
+    });
+  } catch (error) {
+    console.error('Credential test error:', error);
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
 });
 
 // Initialize Figma connection endpoint
@@ -107,9 +148,22 @@ app.post('/initialize-connection', async (req, res) => {
       });
     } catch (figmaError) {
       console.error('Figma API error:', figmaError);
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to connect to Figma';
+      if (figmaError.message.includes('403')) {
+        errorMessage = 'Invalid access token. Please check your Figma personal access token.';
+      } else if (figmaError.message.includes('404')) {
+        errorMessage = 'File not found. Please check your file ID.';
+      } else if (figmaError.message.includes('401')) {
+        errorMessage = 'Unauthorized. Please check your access token.';
+      } else {
+        errorMessage = `Failed to connect to Figma: ${figmaError.message}`;
+      }
+      
       res.status(400).json({
         success: false,
-        error: `Failed to connect to Figma: ${figmaError.message}`
+        error: errorMessage
       });
     }
   } catch (error) {
