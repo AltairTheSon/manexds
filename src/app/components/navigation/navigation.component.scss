@@ -73,19 +73,13 @@
 .nav-item-content {
   display: flex;
   align-items: center;
-  gap: 1rem;
-}
-
-.nav-icon {
-  font-size: 1.5rem;
-  width: 2rem;
-  text-align: center;
 }
 
 .nav-text {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  width: 100%;
 }
 
 .nav-label {

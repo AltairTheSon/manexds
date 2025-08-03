@@ -14,9 +14,8 @@
         [title]="item.description"
       >
         <div class="nav-item-content">
-          <span class="nav-icon">{{ item.label.split(' ')[0] }}</span>
           <div class="nav-text">
-            <span class="nav-label">{{ item.label.split(' ').slice(1).join(' ') }}</span>
+            <span class="nav-label">{{ item.label }}</span>
             <span class="nav-description">{{ item.description }}</span>
           </div>
         </div>
@@ -25,8 +24,8 @@
     
     <div class="nav-footer">
       <div class="nav-status">
-        <span class="status-indicator online"></span>
-        <span class="status-text">Connected to Figma</span>
+        <span class="status-indicator" [class.online]="isConnected" [class.offline]="!isConnected"></span>
+        <span class="status-text">{{ connectionStatusText }}</span>
       </div>
     </div>
   </div>
