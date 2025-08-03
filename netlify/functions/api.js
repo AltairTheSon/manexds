@@ -20,14 +20,14 @@ const FIGMA_ACCESS_TOKEN = process.env.FIGMA_ACCESS_TOKEN;
 const FIGMA_FILE_ID = process.env.FIGMA_FILE_ID || '6zbyXDOYjJsJW52P6iZ3hL';
 
 // Helper function to make Figma API calls
-function makeFigmaRequest(endpoint) {
+function makeFigmaRequest(endpoint, accessToken = FIGMA_ACCESS_TOKEN) {
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'api.figma.com',
       path: endpoint,
       method: 'GET',
       headers: {
-        'X-Figma-Token': FIGMA_ACCESS_TOKEN,
+        'X-Figma-Token': accessToken,
         'Content-Type': 'application/json'
       }
     };
@@ -63,6 +63,62 @@ app.get('/health', (req, res) => {
     environment: process.env.NODE_ENV || 'development',
     figmaConfigured: !!FIGMA_ACCESS_TOKEN
   });
+});
+
+// Initialize Figma connection endpoint
+app.post('/initialize-connection', async (req, res) => {
+  try {
+    console.log('Received connection request:', { 
+      hasAccessToken: !!req.body.accessToken, 
+      hasFileId: !!req.body.fileId,
+      fileId: req.body.fileId 
+    });
+    
+    const { accessToken, fileId, teamId } = req.body;
+    
+    if (!accessToken || !fileId) {
+      console.log('Missing required fields:', { accessToken: !!accessToken, fileId: !!fileId });
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Access token and file ID are required' 
+      });
+    }
+
+    // Test the connection by making a request to the Figma API
+    try {
+      console.log('Making Figma API request for file:', fileId);
+      const fileData = await makeFigmaRequest(`/v1/files/${fileId}`, accessToken);
+      
+      console.log('Figma API response received:', { 
+        name: fileData.name, 
+        hasStyles: !!fileData.styles,
+        hasComponents: !!fileData.components 
+      });
+      
+      // If we get here, the connection was successful
+      res.json({
+        success: true,
+        message: 'Successfully connected to Figma',
+        fileInfo: {
+          name: fileData.name,
+          lastModified: fileData.lastModified,
+          version: fileData.version
+        }
+      });
+    } catch (figmaError) {
+      console.error('Figma API error:', figmaError);
+      res.status(400).json({
+        success: false,
+        error: `Failed to connect to Figma: ${figmaError.message}`
+      });
+    }
+  } catch (error) {
+    console.error('Connection initialization error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'An unexpected error occurred while connecting to Figma.'
+    });
+  }
 });
 
 // Sync status endpoint

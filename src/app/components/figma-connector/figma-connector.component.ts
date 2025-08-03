@@ -56,24 +56,25 @@ export class FigmaConnectorComponent implements OnInit {
         this.connectionStatus = 'success';
         this.successMessage = 'Successfully connected to Figma! Your design system is now loading.';
         
-        // Trigger a sync to load the data
+        // Redirect to dashboard after successful connection
         setTimeout(() => {
-          this.figmaService.startEnhancedSync().subscribe(
-            () => {
-              console.log('Enhanced sync started successfully');
-            },
-            (error) => {
-              console.error('Error starting sync:', error);
-            }
-          );
-        }, 1000);
+          window.location.href = '/dashboard';
+        }, 2000);
       } else {
         this.connectionStatus = 'error';
-        this.errorMessage = 'Failed to connect to Figma. Please check your credentials.';
+        this.errorMessage = 'Failed to connect to Figma. Please check your access token and file ID.';
       }
     } catch (error: any) {
       this.connectionStatus = 'error';
-      this.errorMessage = error.message || 'An unexpected error occurred while connecting to Figma.';
+      console.error('Connection error details:', error);
+      
+      if (error.status === 400) {
+        this.errorMessage = error.error?.error || 'Invalid credentials. Please check your access token and file ID.';
+      } else if (error.status === 0) {
+        this.errorMessage = 'Network error. Please check your internet connection and try again.';
+      } else {
+        this.errorMessage = error.error?.error || error.message || 'An unexpected error occurred while connecting to Figma.';
+      }
     } finally {
       this.isConnecting = false;
     }

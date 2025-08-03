@@ -203,13 +203,13 @@ export class FigmaServerService {
    * Initialize Figma connection
    */
   initializeFigmaConnection(token: FigmaToken): Observable<boolean> {
-    return this.http.post<{ success: boolean; message: string }>(`${this.MCP_ENDPOINT}/initialize`, {
-      figmaToken: token.accessToken,
+    return this.http.post<{ success: boolean; message: string }>(`${this.MCP_ENDPOINT}/initialize-connection`, {
+      accessToken: token.accessToken,
       fileId: token.fileId,
       teamId: token.teamId
     }).pipe(
       map(response => {
-        console.log('🔗 Server connection initialized:', response);
+        console.log('Server connection initialized:', response);
         return response.success;
       }),
       catchError(error => {
