@@ -567,14 +567,26 @@ export class FigmaServerService {
                 }
               }
               
-              // Determine category based on name
+              // Try to extract from style name patterns
               const name = style.name.toLowerCase();
+              if (name.includes('#')) {
+                const hexMatch = name.match(/#[0-9a-fA-F]{6}/);
+                if (hexMatch) {
+                  colorValue = hexMatch[0];
+                }
+              }
+              
+              // Determine category based on name
               if (name.includes('primary')) category = 'colors/primary';
               else if (name.includes('secondary')) category = 'colors/secondary';
               else if (name.includes('neutral')) category = 'colors/neutral';
               else if (name.includes('semantic')) category = 'colors/semantic';
               else if (name.includes('background')) category = 'colors/background';
               else if (name.includes('text')) category = 'colors/text';
+              else if (name.includes('success')) category = 'colors/semantic';
+              else if (name.includes('error') || name.includes('danger')) category = 'colors/semantic';
+              else if (name.includes('warning')) category = 'colors/semantic';
+              else if (name.includes('info')) category = 'colors/semantic';
               
               tokens.push({
                 id: styleId,
@@ -664,9 +676,6 @@ export class FigmaServerService {
         // Extract components
         if (data.components) {
           Object.entries(data.components).forEach(([componentId, component]: [string, any]) => {
-            // Generate preview image URL
-            const previewImageUrl = `https://api.figma.com/v1/images/${fileId}?ids=${componentId}&format=png&scale=1`;
-            
             components.push({
               id: componentId,
               name: component.name,
@@ -690,7 +699,7 @@ export class FigmaServerService {
               },
               children: component.children || [],
               preview: {
-                image: previewImageUrl,
+                image: '', // Will be populated by authenticated call
                 html: ''
               },
               lastModified: new Date(component.updatedAt || Date.now()).toISOString()
@@ -797,5 +806,54 @@ export class FigmaServerService {
   isComponentUsingToken(component: EnhancedFigmaComponent, tokenId: string): boolean {
     if (!component.usedTokens) return false;
     return Object.values(component.usedTokens).some(tokens => tokens.includes(tokenId));
+  }
+
+  // Helper method to generate authenticated Figma image URLs
+  getAuthenticatedImageUrl(nodeId: string, format: 'png' | 'jpg' | 'svg' = 'png', scale: number = 1): string {
+    const accessToken = localStorage.getItem('figma_access_token');
+    const fileId = localStorage.getItem('figma_file_id');
+    
+    if (!accessToken || !fileId) {
+      return '';
+    }
+    
+    return `https://api.figma.com/v1/images/${fileId}?ids=${nodeId}&format=${format}&scale=${scale}`;
+  }
+
+  // Helper method to get authenticated image with headers
+  getAuthenticatedImage(nodeId: string): Observable<string> {
+    return new Observable(observer => {
+      const accessToken = localStorage.getItem('figma_access_token');
+      const fileId = localStorage.getItem('figma_file_id');
+      
+      if (!accessToken || !fileId) {
+        observer.next('');
+        observer.complete();
+        return;
+      }
+
+      fetch(`https://api.figma.com/v1/images/${fileId}?ids=${nodeId}&format=png&scale=1`, {
+        method: 'GET',
+        headers: {
+          'X-Figma-Token': accessToken
+        }
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`Failed to fetch image: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        const imageUrl = data.images[nodeId];
+        observer.next(imageUrl || '');
+        observer.complete();
+      })
+      .catch(error => {
+        console.error('Error fetching image:', error);
+        observer.next('');
+        observer.complete();
+      });
+    });
   }
 } 
