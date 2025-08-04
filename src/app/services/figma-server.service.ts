@@ -486,7 +486,63 @@ export class FigmaServerService {
   }
 
   getEnhancedTokens(): Observable<EnhancedDesignToken[]> {
-    return this.http.get<EnhancedDesignToken[]>(`${this.MCP_ENDPOINT}/enhanced/tokens`);
+    return new Observable(observer => {
+      const accessToken = localStorage.getItem('figma_access_token');
+      const fileId = localStorage.getItem('figma_file_id');
+      
+      if (!accessToken || !fileId) {
+        observer.next([]);
+        observer.complete();
+        return;
+      }
+
+      fetch(`https://api.figma.com/v1/files/${fileId}`, {
+        method: 'GET',
+        headers: {
+          'X-Figma-Token': accessToken,
+          'Content-Type': 'application/json'
+        }
+      })
+      .then(response => {
+        if (!response.ok) {
+          return response.json().then(errorData => {
+            throw new Error(errorData.message || `HTTP ${response.status}`);
+          });
+        }
+        return response.json();
+      })
+      .then(data => {
+        const tokens: EnhancedDesignToken[] = [];
+        
+        // Extract tokens from styles
+        if (data.styles) {
+          Object.entries(data.styles).forEach(([styleId, style]: [string, any]) => {
+            if (style.styleType === 'FILL') {
+              tokens.push({
+                id: styleId,
+                name: style.name,
+                type: 'color',
+                value: '#000000', // Placeholder - would need to extract actual color
+                description: `Color style: ${style.name}`,
+                category: 'colors/primary',
+                fileId: fileId,
+                styleId: styleId,
+                usage: [],
+                lastModified: new Date().toISOString()
+              });
+            }
+          });
+        }
+        
+        observer.next(tokens);
+        observer.complete();
+      })
+      .catch(error => {
+        console.error('Error fetching tokens:', error);
+        observer.next([]);
+        observer.complete();
+      });
+    });
   }
 
   getEnhancedTokensByType(type: string): Observable<EnhancedDesignToken[]> {
@@ -498,7 +554,77 @@ export class FigmaServerService {
   }
 
   getEnhancedComponents(): Observable<EnhancedFigmaComponent[]> {
-    return this.http.get<EnhancedFigmaComponent[]>(`${this.MCP_ENDPOINT}/enhanced/components`);
+    return new Observable(observer => {
+      const accessToken = localStorage.getItem('figma_access_token');
+      const fileId = localStorage.getItem('figma_file_id');
+      
+      if (!accessToken || !fileId) {
+        observer.next([]);
+        observer.complete();
+        return;
+      }
+
+      fetch(`https://api.figma.com/v1/files/${fileId}`, {
+        method: 'GET',
+        headers: {
+          'X-Figma-Token': accessToken,
+          'Content-Type': 'application/json'
+        }
+      })
+      .then(response => {
+        if (!response.ok) {
+          return response.json().then(errorData => {
+            throw new Error(errorData.message || `HTTP ${response.status}`);
+          });
+        }
+        return response.json();
+      })
+      .then(data => {
+        const components: EnhancedFigmaComponent[] = [];
+        
+        // Extract components
+        if (data.components) {
+          Object.entries(data.components).forEach(([componentId, component]: [string, any]) => {
+            components.push({
+              id: componentId,
+              name: component.name,
+              type: 'COMPONENT',
+              description: component.description || '',
+              fileId: fileId,
+              pageId: component.pageId || '',
+              frameId: component.frameId || '',
+              usedTokens: {
+                colors: [],
+                typography: [],
+                spacing: [],
+                effects: []
+              },
+              properties: {},
+              absoluteBoundingBox: {
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 100
+              },
+              children: [],
+              preview: {
+                image: '',
+                html: ''
+              },
+              lastModified: new Date().toISOString()
+            });
+          });
+        }
+        
+        observer.next(components);
+        observer.complete();
+      })
+      .catch(error => {
+        console.error('Error fetching components:', error);
+        observer.next([]);
+        observer.complete();
+      });
+    });
   }
 
   getEnhancedComponentById(componentId: string): Observable<EnhancedFigmaComponent> {
@@ -510,7 +636,50 @@ export class FigmaServerService {
   }
 
   getFigmaFiles(): Observable<FigmaFile[]> {
-    return this.http.get<FigmaFile[]>(`${this.MCP_ENDPOINT}/files`);
+    return new Observable(observer => {
+      const accessToken = localStorage.getItem('figma_access_token');
+      const fileId = localStorage.getItem('figma_file_id');
+      
+      if (!accessToken || !fileId) {
+        observer.next([]);
+        observer.complete();
+        return;
+      }
+
+      fetch(`https://api.figma.com/v1/files/${fileId}`, {
+        method: 'GET',
+        headers: {
+          'X-Figma-Token': accessToken,
+          'Content-Type': 'application/json'
+        }
+      })
+      .then(response => {
+        if (!response.ok) {
+          return response.json().then(errorData => {
+            throw new Error(errorData.message || `HTTP ${response.status}`);
+          });
+        }
+        return response.json();
+      })
+      .then(data => {
+        const files: FigmaFile[] = [{
+          id: fileId,
+          name: data.name,
+          type: 'design-system',
+          description: 'Main design system file',
+          priority: 1,
+          lastModified: new Date(data.lastModified).toISOString(),
+          version: data.version
+        }];
+        observer.next(files);
+        observer.complete();
+      })
+      .catch(error => {
+        console.error('Error fetching files:', error);
+        observer.next([]);
+        observer.complete();
+      });
+    });
   }
 
   // Helper methods for enhanced data
