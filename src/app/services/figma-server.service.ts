@@ -480,8 +480,45 @@ export class FigmaServerService {
 
   // Enhanced API methods
   startEnhancedSync(syncType: 'full' | 'delta' = 'full'): Observable<{ success: boolean; syncId: string; message: string }> {
-    return this.http.post<{ success: boolean; syncId: string; message: string }>(`${this.MCP_ENDPOINT}/enhanced/sync`, {
-      syncType
+    return new Observable(observer => {
+      const accessToken = localStorage.getItem('figma_access_token');
+      const fileId = localStorage.getItem('figma_file_id');
+      
+      if (!accessToken || !fileId) {
+        observer.next({ success: false, syncId: '', message: 'No Figma credentials found. Please connect to Figma first.' });
+        observer.complete();
+        return;
+      }
+
+      fetch(`https://api.figma.com/v1/files/${fileId}`, {
+        method: 'GET',
+        headers: {
+          'X-Figma-Token': accessToken,
+          'Content-Type': 'application/json'
+        }
+      })
+      .then(response => {
+        if (!response.ok) {
+          return response.json().then(errorData => {
+            throw new Error(errorData.message || `HTTP ${response.status}`);
+          });
+        }
+        return response.json();
+      })
+      .then(data => {
+        console.log('Enhanced sync successful:', data.name);
+        observer.next({ 
+          success: true, 
+          syncId: Date.now().toString(), 
+          message: `Successfully synced ${data.name}` 
+        });
+        observer.complete();
+      })
+      .catch(error => {
+        console.error('Enhanced sync failed:', error);
+        observer.next({ success: false, syncId: '', message: `Sync failed: ${error.message}` });
+        observer.complete();
+      });
     });
   }
 
@@ -518,17 +555,55 @@ export class FigmaServerService {
         if (data.styles) {
           Object.entries(data.styles).forEach(([styleId, style]: [string, any]) => {
             if (style.styleType === 'FILL') {
+              // Try to extract color value from style description or name
+              let colorValue = '#000000';
+              let category = 'colors/primary';
+              
+              // Parse color from style name or description
+              if (style.description) {
+                const colorMatch = style.description.match(/#[0-9a-fA-F]{6}/);
+                if (colorMatch) {
+                  colorValue = colorMatch[0];
+                }
+              }
+              
+              // Determine category based on name
+              const name = style.name.toLowerCase();
+              if (name.includes('primary')) category = 'colors/primary';
+              else if (name.includes('secondary')) category = 'colors/secondary';
+              else if (name.includes('neutral')) category = 'colors/neutral';
+              else if (name.includes('semantic')) category = 'colors/semantic';
+              else if (name.includes('background')) category = 'colors/background';
+              else if (name.includes('text')) category = 'colors/text';
+              
               tokens.push({
                 id: styleId,
                 name: style.name,
                 type: 'color',
-                value: '#000000', // Placeholder - would need to extract actual color
-                description: `Color style: ${style.name}`,
-                category: 'colors/primary',
+                value: colorValue,
+                description: style.description || `Color style: ${style.name}`,
+                category: category,
                 fileId: fileId,
                 styleId: styleId,
                 usage: [],
-                lastModified: new Date().toISOString()
+                lastModified: new Date(style.updatedAt || Date.now()).toISOString()
+              });
+            } else if (style.styleType === 'TEXT') {
+              tokens.push({
+                id: styleId,
+                name: style.name,
+                type: 'typography',
+                value: {
+                  fontSize: style.description?.match(/font-size:\s*(\d+)/)?.[1] || '16',
+                  fontFamily: style.description?.match(/font-family:\s*([^;]+)/)?.[1] || 'Inter',
+                  fontWeight: style.description?.match(/font-weight:\s*(\d+)/)?.[1] || '400'
+                },
+                description: style.description || `Typography style: ${style.name}`,
+                category: 'typography/body',
+                fileId: fileId,
+                styleId: styleId,
+                usage: [],
+                lastModified: new Date(style.updatedAt || Date.now()).toISOString()
               });
             }
           });
@@ -585,10 +660,13 @@ export class FigmaServerService {
         // Extract components
         if (data.components) {
           Object.entries(data.components).forEach(([componentId, component]: [string, any]) => {
+            // Generate preview image URL
+            const previewImageUrl = `https://api.figma.com/v1/images/${fileId}?ids=${componentId}&format=png&scale=1`;
+            
             components.push({
               id: componentId,
               name: component.name,
-              type: 'COMPONENT',
+              type: component.componentSetId ? 'COMPONENT_SET' : 'COMPONENT',
               description: component.description || '',
               fileId: fileId,
               pageId: component.pageId || '',
@@ -599,19 +677,19 @@ export class FigmaServerService {
                 spacing: [],
                 effects: []
               },
-              properties: {},
+              properties: component.componentProperties || {},
               absoluteBoundingBox: {
-                x: 0,
-                y: 0,
-                width: 100,
-                height: 100
+                x: component.absoluteBoundingBox?.x || 0,
+                y: component.absoluteBoundingBox?.y || 0,
+                width: component.absoluteBoundingBox?.width || 100,
+                height: component.absoluteBoundingBox?.height || 100
               },
-              children: [],
+              children: component.children || [],
               preview: {
-                image: '',
+                image: previewImageUrl,
                 html: ''
               },
-              lastModified: new Date().toISOString()
+              lastModified: new Date(component.updatedAt || Date.now()).toISOString()
             });
           });
         }
