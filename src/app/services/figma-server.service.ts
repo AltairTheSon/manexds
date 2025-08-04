@@ -709,38 +709,65 @@ export class FigmaServerService {
         
         // Now fetch images for all components
         if (components.length > 0) {
-          const componentIds = components.map(c => c.id).join(',');
+          console.log('Components found:', components.length);
+          console.log('Sample component:', components[0]);
           
-          fetch(`https://api.figma.com/v1/images/${fileId}?ids=${componentIds}&format=png&scale=1`, {
-            method: 'GET',
-            headers: {
-              'X-Figma-Token': accessToken
-            }
-          })
-          .then(response => {
-            if (!response.ok) {
-              throw new Error(`Failed to fetch images: ${response.status}`);
-            }
-            return response.json();
-          })
-          .then(imageData => {
-            // Update components with image URLs
-            components.forEach(component => {
-              const imageUrl = imageData.images[component.id];
-              if (imageUrl) {
-                component.preview.image = imageUrl;
-              }
-            });
+          // Try both component IDs and frame IDs
+          const componentIds = components.map(c => c.id);
+          const frameIds = components
+            .map(c => c.frameId)
+            .filter(id => id && id !== '');
+          
+          const allIds = [...componentIds, ...frameIds];
+          const uniqueIds = allIds.filter((id, index, arr) => arr.indexOf(id) === index);
+          
+          if (uniqueIds.length > 0) {
+            const idsString = uniqueIds.join(',');
+            console.log('Fetching images for IDs:', idsString);
             
+            fetch(`https://api.figma.com/v1/images/${fileId}?ids=${idsString}&format=png&scale=1`, {
+              method: 'GET',
+              headers: {
+                'X-Figma-Token': accessToken
+              }
+            })
+            .then(response => {
+              if (!response.ok) {
+                throw new Error(`Failed to fetch images: ${response.status}`);
+              }
+              return response.json();
+            })
+            .then(imageData => {
+              console.log('Image data received:', imageData);
+              // Update components with image URLs - try component ID first, then frame ID
+              components.forEach(component => {
+                let imageUrl = imageData.images[component.id];
+                if (!imageUrl && component.frameId) {
+                  imageUrl = imageData.images[component.frameId];
+                }
+                
+                if (imageUrl) {
+                  component.preview.image = imageUrl;
+                  console.log(`Set image for component ${component.name}:`, imageUrl);
+                } else {
+                  console.log(`No image found for component ${component.name} (id: ${component.id}, frameId: ${component.frameId})`);
+                }
+              });
+              
+              observer.next(components);
+              observer.complete();
+            })
+            .catch(error => {
+              console.error('Error fetching component images:', error);
+              // Return components without images if image fetch fails
+              observer.next(components);
+              observer.complete();
+            });
+          } else {
+            console.log('No IDs found for components');
             observer.next(components);
             observer.complete();
-          })
-          .catch(error => {
-            console.error('Error fetching component images:', error);
-            // Return components without images if image fetch fails
-            observer.next(components);
-            observer.complete();
-          });
+          }
         } else {
           observer.next(components);
           observer.complete();
