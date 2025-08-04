@@ -299,4 +299,19 @@ export class EnhancedDesignSystemComponent implements OnInit, OnDestroy {
       default: return 'File';
     }
   }
+
+  onImageError(event: any): void {
+    // Hide the image and show placeholder when image fails to load
+    const img = event.target;
+    img.style.display = 'none';
+    const parent = img.parentElement;
+    if (parent) {
+      parent.innerHTML = `
+        <div class="placeholder-content">
+          <span class="placeholder-icon">❌</span>
+          <span class="placeholder-text">Image failed to load</span>
+        </div>
+      `;
+    }
+  }
 } 

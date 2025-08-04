@@ -171,6 +171,21 @@
               </span>
             </div>
             
+            <!-- Component Preview Image -->
+            <div class="component-preview" *ngIf="component.preview?.image">
+              <img 
+                [src]="component.preview.image" 
+                [alt]="component.name"
+                class="component-image"
+                (error)="onImageError($event)">
+            </div>
+            <div class="component-preview-placeholder" *ngIf="!component.preview?.image">
+              <div class="placeholder-content">
+                <span class="placeholder-icon">📷</span>
+                <span class="placeholder-text">No preview available</span>
+              </div>
+            </div>
+            
             <div class="component-details">
               <div class="component-type">
                 <strong>Type:</strong> {{ component.type }}

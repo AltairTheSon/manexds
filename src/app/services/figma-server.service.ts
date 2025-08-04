@@ -707,8 +707,44 @@ export class FigmaServerService {
           });
         }
         
-        observer.next(components);
-        observer.complete();
+        // Now fetch images for all components
+        if (components.length > 0) {
+          const componentIds = components.map(c => c.id).join(',');
+          
+          fetch(`https://api.figma.com/v1/images/${fileId}?ids=${componentIds}&format=png&scale=1`, {
+            method: 'GET',
+            headers: {
+              'X-Figma-Token': accessToken
+            }
+          })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`Failed to fetch images: ${response.status}`);
+            }
+            return response.json();
+          })
+          .then(imageData => {
+            // Update components with image URLs
+            components.forEach(component => {
+              const imageUrl = imageData.images[component.id];
+              if (imageUrl) {
+                component.preview.image = imageUrl;
+              }
+            });
+            
+            observer.next(components);
+            observer.complete();
+          })
+          .catch(error => {
+            console.error('Error fetching component images:', error);
+            // Return components without images if image fetch fails
+            observer.next(components);
+            observer.complete();
+          });
+        } else {
+          observer.next(components);
+          observer.complete();
+        }
       })
       .catch(error => {
         console.error('Error fetching components:', error);
