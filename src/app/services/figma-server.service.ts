@@ -621,11 +621,15 @@ export class FigmaServerService {
   }
 
   getEnhancedTokensByType(type: string): Observable<EnhancedDesignToken[]> {
-    return this.http.get<EnhancedDesignToken[]>(`${this.MCP_ENDPOINT}/enhanced/tokens/${type}`);
+    return this.getEnhancedTokens().pipe(
+      map(tokens => tokens.filter(token => token.type === type))
+    );
   }
 
   getEnhancedTokensByCategory(category: string): Observable<EnhancedDesignToken[]> {
-    return this.http.get<EnhancedDesignToken[]>(`${this.MCP_ENDPOINT}/enhanced/tokens/category/${category}`);
+    return this.getEnhancedTokens().pipe(
+      map(tokens => tokens.filter(token => token.category === category))
+    );
   }
 
   getEnhancedComponents(): Observable<EnhancedFigmaComponent[]> {
@@ -706,11 +710,23 @@ export class FigmaServerService {
   }
 
   getEnhancedComponentById(componentId: string): Observable<EnhancedFigmaComponent> {
-    return this.http.get<EnhancedFigmaComponent>(`${this.MCP_ENDPOINT}/enhanced/components/${componentId}`);
+    return this.getEnhancedComponents().pipe(
+      map(components => {
+        const component = components.find(c => c.id === componentId);
+        if (!component) {
+          throw new Error(`Component with ID ${componentId} not found`);
+        }
+        return component;
+      })
+    );
   }
 
   getComponentsUsingToken(tokenId: string): Observable<EnhancedFigmaComponent[]> {
-    return this.http.get<EnhancedFigmaComponent[]>(`${this.MCP_ENDPOINT}/enhanced/tokens/${tokenId}/components`);
+    return this.getEnhancedComponents().pipe(
+      map(components => components.filter(component => 
+        this.isComponentUsingToken(component, tokenId)
+      ))
+    );
   }
 
   getFigmaFiles(): Observable<FigmaFile[]> {
