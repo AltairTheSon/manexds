@@ -45,36 +45,51 @@ export class FigmaConnectorComponent implements OnInit {
     try {
       const formData = this.connectionForm.value;
       
-      // Test the connection
-      const success = await this.figmaService.initializeFigmaConnection({
-        accessToken: formData.accessToken,
-        fileId: formData.fileId,
-        teamId: formData.teamId
-      }).toPromise();
+      // Test the connection directly with Figma API
+      const response = await fetch(`https://api.figma.com/v1/files/${formData.fileId}`, {
+        method: 'GET',
+        headers: {
+          'X-Figma-Token': formData.accessToken,
+          'Content-Type': 'application/json'
+        }
+      });
 
-      if (success) {
-        this.connectionStatus = 'success';
-        this.successMessage = 'Successfully connected to Figma! Your design system is now loading.';
-        
-        // Redirect to dashboard after successful connection
-        setTimeout(() => {
-          window.location.href = '/dashboard';
-        }, 2000);
-      } else {
-        this.connectionStatus = 'error';
-        this.errorMessage = 'Failed to connect to Figma. Please check your access token and file ID.';
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
       }
+
+      const fileData = await response.json();
+      
+      // Connection successful
+      this.connectionStatus = 'success';
+      this.successMessage = `Successfully connected to Figma! File: ${fileData.name}`;
+      
+      // Store credentials in localStorage for future use
+      localStorage.setItem('figma_access_token', formData.accessToken);
+      localStorage.setItem('figma_file_id', formData.fileId);
+      
+      // Redirect to dashboard after successful connection
+      setTimeout(() => {
+        window.location.href = '/dashboard';
+      }, 2000);
+      
     } catch (error: any) {
       this.connectionStatus = 'error';
       console.error('Connection error details:', error);
       
-      if (error.status === 400) {
-        this.errorMessage = error.error?.error || 'Invalid credentials. Please check your access token and file ID.';
-      } else if (error.status === 0) {
-        this.errorMessage = 'Network error. Please check your internet connection and try again.';
+      let errorMessage = 'Failed to connect to Figma';
+      if (error.message.includes('403')) {
+        errorMessage = 'Invalid access token. Please check your Figma personal access token.';
+      } else if (error.message.includes('404')) {
+        errorMessage = 'File not found. Please check your file ID.';
+      } else if (error.message.includes('401')) {
+        errorMessage = 'Unauthorized. Please check your access token.';
       } else {
-        this.errorMessage = error.error?.error || error.message || 'An unexpected error occurred while connecting to Figma.';
+        errorMessage = `Error: ${error.message}`;
       }
+      
+      this.errorMessage = errorMessage;
     } finally {
       this.isConnecting = false;
     }
