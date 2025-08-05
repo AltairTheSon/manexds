@@ -571,136 +571,153 @@ export class FigmaServerService {
         
         // Extract tokens from styles
         if (data.styles) {
-          console.log('Found styles:', Object.keys(data.styles).length);
+          const styleIds = Object.keys(data.styles);
+          console.log('Found styles:', styleIds.length);
           
-          Object.entries(data.styles).forEach(([styleId, style]: [string, any]) => {
-            console.log(`Processing style ${style.name}:`, style);
+          if (styleIds.length > 0) {
+            // Fetch actual style details to get real color values
+            const styleIdsString = styleIds.join(',');
+            console.log('Fetching style details for:', styleIdsString);
             
-            if (style.styleType === 'FILL') {
-              // Try to extract color value from style name or description
-              let colorValue = '#000000';
-              let category = 'colors/primary';
-              
-              const name = style.name.toLowerCase();
-              const description = style.description || '';
-              
-              // Try to extract hex color from style name
-              const hexMatch = name.match(/#[0-9a-fA-F]{6}/);
-              if (hexMatch) {
-                colorValue = hexMatch[0];
-                console.log(`Extracted color from name for ${style.name}:`, colorValue);
+            fetch(`https://api.figma.com/v1/files/${fileId}/styles?ids=${styleIdsString}`, {
+              method: 'GET',
+              headers: {
+                'X-Figma-Token': accessToken
               }
-              
-              // Try to extract from description
-              const descHexMatch = description.match(/#[0-9a-fA-F]{6}/);
-              if (descHexMatch) {
-                colorValue = descHexMatch[0];
-                console.log(`Extracted color from description for ${style.name}:`, colorValue);
+            })
+            .then(response => {
+              if (!response.ok) {
+                throw new Error(`Failed to fetch styles: ${response.status}`);
               }
+              return response.json();
+            })
+            .then(styleData => {
+              console.log('Style data received:', styleData);
               
-              // Try to extract RGB values from name or description
-              const rgbMatch = (name + ' ' + description).match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-              if (rgbMatch) {
-                const [, r, g, b] = rgbMatch;
-                colorValue = `#${parseInt(r).toString(16).padStart(2, '0')}${parseInt(g).toString(16).padStart(2, '0')}${parseInt(b).toString(16).padStart(2, '0')}`;
-                console.log(`Extracted RGB color for ${style.name}:`, colorValue);
-              }
-              
-              // For now, use a simple approach - extract numbers from the style name to generate a color
-              // This is better than hardcoded colors that might not match your design system
-              if (colorValue === '#000000') {
-                // Extract numbers from the style name to create a deterministic color
-                const numbers = style.name.match(/\d+/g);
-                if (numbers && numbers.length > 0) {
-                  const num1 = parseInt(numbers[0]) || 0;
-                  const num2 = parseInt(numbers[1]) || 0;
-                  const num3 = parseInt(numbers[2]) || 0;
+              Object.entries(data.styles).forEach(([styleId, style]: [string, any]) => {
+                console.log(`Processing style ${style.name}:`, style);
+                
+                if (style.styleType === 'FILL') {
+                  // Get actual color value from style detail
+                  let colorValue = '#000000';
+                  let category = 'colors/primary';
                   
-                  // Create a color based on the numbers in the style name
-                  const r = (num1 * 7) % 256;
-                  const g = (num2 * 11) % 256;
-                  const b = (num3 * 13) % 256;
+                  // Find the style detail in the response
+                  const styleDetail = styleData.meta?.styles?.[styleId];
+                  console.log(`Style detail for ${style.name}:`, styleDetail);
                   
-                  colorValue = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-                  console.log(`Generated color for ${style.name}:`, colorValue, `(from numbers: ${num1}, ${num2}, ${num3})`);
-                } else {
-                  // Fallback: use the style name hash
-                  const hash = style.name.split('').reduce((a: number, b: string) => {
-                    a = ((a << 5) - a) + b.charCodeAt(0);
-                    return a & a;
-                  }, 0);
-                  const hue = Math.abs(hash) % 360;
-                  colorValue = `hsl(${hue}, 70%, 50%)`;
-                  console.log(`Generated fallback color for ${style.name}:`, colorValue);
+                  if (styleDetail?.fills && styleDetail.fills.length > 0) {
+                    const fill = styleDetail.fills[0];
+                    if (fill.type === 'SOLID' && fill.color) {
+                      const { r, g, b } = fill.color;
+                      colorValue = `#${Math.round(r * 255).toString(16).padStart(2, '0')}${Math.round(g * 255).toString(16).padStart(2, '0')}${Math.round(b * 255).toString(16).padStart(2, '0')}`;
+                      console.log(`Extracted REAL color for ${style.name}:`, colorValue);
+                    }
+                  }
+                  
+                  // Determine category based on name
+                  const name = style.name.toLowerCase();
+                  if (name.includes('primary')) category = 'colors/primary';
+                  else if (name.includes('secondary')) category = 'colors/secondary';
+                  else if (name.includes('neutral')) category = 'colors/neutral';
+                  else if (name.includes('semantic')) category = 'colors/semantic';
+                  else if (name.includes('background')) category = 'colors/background';
+                  else if (name.includes('text')) category = 'colors/text';
+                  else if (name.includes('success')) category = 'colors/semantic';
+                  else if (name.includes('error') || name.includes('danger')) category = 'colors/semantic';
+                  else if (name.includes('warning')) category = 'colors/semantic';
+                  else if (name.includes('info')) category = 'colors/semantic';
+                  
+                  tokens.push({
+                    id: styleId,
+                    name: style.name,
+                    type: 'color',
+                    value: colorValue,
+                    description: style.description || `Color style: ${style.name}`,
+                    category: category,
+                    fileId: fileId,
+                    styleId: styleId,
+                    usage: [],
+                    lastModified: new Date(style.updatedAt || Date.now()).toISOString()
+                  });
+                } else if (style.styleType === 'TEXT') {
+                  // Extract typography values from style detail
+                  let typographyValue = {
+                    fontSize: '16',
+                    fontFamily: 'Inter',
+                    fontWeight: '400'
+                  };
+                  
+                  const styleDetail = styleData.meta?.styles?.[styleId];
+                  if (styleDetail?.style) {
+                    const textStyle = styleDetail.style;
+                    typographyValue = {
+                      fontSize: textStyle.fontSize?.toString() || '16',
+                      fontFamily: textStyle.fontFamily || 'Inter',
+                      fontWeight: textStyle.fontWeight?.toString() || '400'
+                    };
+                  }
+                  
+                  tokens.push({
+                    id: styleId,
+                    name: style.name,
+                    type: 'typography',
+                    value: typographyValue,
+                    description: style.description || `Typography style: ${style.name}`,
+                    category: 'typography/body',
+                    fileId: fileId,
+                    styleId: styleId,
+                    usage: [],
+                    lastModified: new Date(style.updatedAt || Date.now()).toISOString()
+                  });
                 }
-              }
-              
-              // Determine category based on name
-              if (name.includes('primary')) category = 'colors/primary';
-              else if (name.includes('secondary')) category = 'colors/secondary';
-              else if (name.includes('neutral')) category = 'colors/neutral';
-              else if (name.includes('semantic')) category = 'colors/semantic';
-              else if (name.includes('background')) category = 'colors/background';
-              else if (name.includes('text')) category = 'colors/text';
-              else if (name.includes('success')) category = 'colors/semantic';
-              else if (name.includes('error') || name.includes('danger')) category = 'colors/semantic';
-              else if (name.includes('warning')) category = 'colors/semantic';
-              else if (name.includes('info')) category = 'colors/semantic';
-              
-              tokens.push({
-                id: styleId,
-                name: style.name,
-                type: 'color',
-                value: colorValue,
-                description: style.description || `Color style: ${style.name}`,
-                category: category,
-                fileId: fileId,
-                styleId: styleId,
-                usage: [],
-                lastModified: new Date(style.updatedAt || Date.now()).toISOString()
               });
-            } else if (style.styleType === 'TEXT') {
-              // Extract typography values from style name or description
-              let typographyValue = {
-                fontSize: '16',
-                fontFamily: 'Inter',
-                fontWeight: '400'
-              };
               
-              const name = style.name.toLowerCase();
-              const description = style.description || '';
-              
-              // Try to extract font size
-              const fontSizeMatch = (name + ' ' + description).match(/(\d+)px/);
-              if (fontSizeMatch) {
-                typographyValue.fontSize = fontSizeMatch[1];
-              }
-              
-              // Try to extract font family
-              if (name.includes('inter') || description.includes('inter')) typographyValue.fontFamily = 'Inter';
-              else if (name.includes('roboto') || description.includes('roboto')) typographyValue.fontFamily = 'Roboto';
-              else if (name.includes('arial') || description.includes('arial')) typographyValue.fontFamily = 'Arial';
-              else if (name.includes('helvetica') || description.includes('helvetica')) typographyValue.fontFamily = 'Helvetica';
-              
-              // Try to extract font weight
-              if (name.includes('bold') || description.includes('bold')) typographyValue.fontWeight = '700';
-              else if (name.includes('medium') || description.includes('medium')) typographyValue.fontWeight = '500';
-              else if (name.includes('light') || description.includes('light')) typographyValue.fontWeight = '300';
-              
-              tokens.push({
-                id: styleId,
-                name: style.name,
-                type: 'typography',
-                value: typographyValue,
-                description: style.description || `Typography style: ${style.name}`,
-                category: 'typography/body',
-                fileId: fileId,
-                styleId: styleId,
-                usage: [],
-                lastModified: new Date(style.updatedAt || Date.now()).toISOString()
+              observer.next(tokens);
+              observer.complete();
+            })
+            .catch(error => {
+              console.error('Error fetching style details:', error);
+              // Fallback to basic token creation
+              Object.entries(data.styles).forEach(([styleId, style]: [string, any]) => {
+                if (style.styleType === 'FILL') {
+                  tokens.push({
+                    id: styleId,
+                    name: style.name,
+                    type: 'color',
+                    value: '#000000', // Fallback
+                    description: style.description || `Color style: ${style.name}`,
+                    category: 'colors/primary',
+                    fileId: fileId,
+                    styleId: styleId,
+                    usage: [],
+                    lastModified: new Date(style.updatedAt || Date.now()).toISOString()
+                  });
+                } else if (style.styleType === 'TEXT') {
+                  tokens.push({
+                    id: styleId,
+                    name: style.name,
+                    type: 'typography',
+                    value: { fontSize: '16', fontFamily: 'Inter', fontWeight: '400' },
+                    description: style.description || `Typography style: ${style.name}`,
+                    category: 'typography/body',
+                    fileId: fileId,
+                    styleId: styleId,
+                    usage: [],
+                    lastModified: new Date(style.updatedAt || Date.now()).toISOString()
+                  });
+                }
               });
-            }
-          });
+              observer.next(tokens);
+              observer.complete();
+            });
+          } else {
+            observer.next(tokens);
+            observer.complete();
+          }
+        } else {
+          observer.next(tokens);
+          observer.complete();
         }
         
         observer.next(tokens);
@@ -789,43 +806,84 @@ export class FigmaServerService {
           });
         }
         
-        // Generate simple placeholder images for components
+        // Fetch actual component images from Figma
         if (components.length > 0) {
-          console.log('Generating placeholder images for components:', components.length);
+          console.log('Fetching actual component images:', components.length);
           
-          components.forEach((component, index) => {
-            // Create a simple SVG placeholder based on component dimensions
-            const width = component.absoluteBoundingBox.width || 100;
-            const height = component.absoluteBoundingBox.height || 100;
+          // Get component IDs for image fetching
+          const componentIds = components.map(c => c.id);
+          const componentIdsString = componentIds.join(',');
+          
+          console.log('Fetching images for component IDs:', componentIdsString);
+          
+          fetch(`https://api.figma.com/v1/images/${fileId}?ids=${componentIdsString}&format=png&scale=1`, {
+            method: 'GET',
+            headers: {
+              'X-Figma-Token': accessToken
+            }
+          })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`Failed to fetch component images: ${response.status}`);
+            }
+            return response.json();
+          })
+          .then(imageData => {
+            console.log('Component image data received:', imageData);
             
-            // Generate a color based on component name
-            const hash = component.name.split('').reduce((a: number, b: string) => {
-              a = ((a << 5) - a) + b.charCodeAt(0);
-              return a & a;
-            }, 0);
-            const hue = Math.abs(hash) % 360;
-            const color = `hsl(${hue}, 70%, 60%)`;
+            // Update components with actual image URLs
+            components.forEach(component => {
+              const imageUrl = imageData.images[component.id];
+              if (imageUrl) {
+                component.preview.image = imageUrl;
+                console.log(`Set REAL image for component ${component.name}:`, imageUrl);
+              } else {
+                console.log(`No image found for component ${component.name} (id: ${component.id})`);
+                // Create a simple placeholder for components without images
+                const width = component.absoluteBoundingBox.width || 100;
+                const height = component.absoluteBoundingBox.height || 100;
+                const svg = `
+                  <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="100%" height="100%" fill="#f0f0f0" opacity="0.8"/>
+                    <rect width="100%" height="100%" fill="none" stroke="#ccc" stroke-width="1" opacity="0.5"/>
+                    <text x="50%" y="50%" text-anchor="middle" dy="0.35em" font-family="Arial, sans-serif" font-size="10" fill="#999" opacity="0.7">${component.name}</text>
+                  </svg>
+                `;
+                const dataUrl = `data:image/svg+xml;base64,${btoa(svg)}`;
+                component.preview.image = dataUrl;
+              }
+            });
             
-            // Create SVG placeholder
-            const svg = `
-              <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-                <rect width="100%" height="100%" fill="${color}" opacity="0.8"/>
-                <rect width="100%" height="100%" fill="none" stroke="#333" stroke-width="2" opacity="0.3"/>
-                <text x="50%" y="50%" text-anchor="middle" dy="0.35em" font-family="Arial, sans-serif" font-size="12" fill="#333" opacity="0.7">${component.name}</text>
-              </svg>
-            `;
+            console.log('Components loaded with real images:', components.length);
+            observer.next(components);
+            observer.complete();
+          })
+          .catch(error => {
+            console.error('Error fetching component images:', error);
+            // Fallback to simple placeholders
+            components.forEach(component => {
+              const width = component.absoluteBoundingBox.width || 100;
+              const height = component.absoluteBoundingBox.height || 100;
+              const svg = `
+                <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+                  <rect width="100%" height="100%" fill="#f0f0f0" opacity="0.8"/>
+                  <rect width="100%" height="100%" fill="none" stroke="#ccc" stroke-width="1" opacity="0.5"/>
+                  <text x="50%" y="50%" text-anchor="middle" dy="0.35em" font-family="Arial, sans-serif" font-size="10" fill="#999" opacity="0.7">${component.name}</text>
+                </svg>
+              `;
+              const dataUrl = `data:image/svg+xml;base64,${btoa(svg)}`;
+              component.preview.image = dataUrl;
+            });
             
-            // Convert SVG to data URL
-            const dataUrl = `data:image/svg+xml;base64,${btoa(svg)}`;
-            component.preview.image = dataUrl;
-            
-            console.log(`Generated placeholder for component ${component.name}:`, dataUrl.substring(0, 50) + '...');
+            console.log('Components loaded with fallback placeholders:', components.length);
+            observer.next(components);
+            observer.complete();
           });
+        } else {
+          console.log('No components to load images for');
+          observer.next(components);
+          observer.complete();
         }
-        
-        console.log('Components loaded with placeholder images:', components.length);
-        observer.next(components);
-        observer.complete();
       })
       .catch(error => {
         console.error('Error fetching components:', error);
