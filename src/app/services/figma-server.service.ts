@@ -633,7 +633,7 @@ export class FigmaServerService {
                   console.log(`Extracted neutral color for ${style.name}:`, colorValue);
                 } else {
                   // Generate a color based on the style name hash
-                  const hash = style.name.split('').reduce((a, b) => {
+                  const hash = style.name.split('').reduce((a: number, b: string) => {
                     a = ((a << 5) - a) + b.charCodeAt(0);
                     return a & a;
                   }, 0);
