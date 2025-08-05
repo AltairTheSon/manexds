@@ -760,64 +760,80 @@ export class FigmaServerService {
           });
         }
         
-        // Now fetch images for all components
+        // Now fetch images for all components in batches
         if (components.length > 0) {
           console.log('Components found:', components.length);
           console.log('Sample component:', components[0]);
           
-          // Try both component IDs and frame IDs
-          const componentIds = components.map(c => c.id);
+          // Get frame IDs for image fetching (more reliable than component IDs)
           const frameIds = components
             .map(c => c.frameId)
-            .filter(id => id && id !== '');
+            .filter(id => id && id !== '')
+            .filter((id, index, arr) => arr.indexOf(id) === index); // Remove duplicates
           
-          const allIds = [...componentIds, ...frameIds];
-          const uniqueIds = allIds.filter((id, index, arr) => arr.indexOf(id) === index);
-          
-          if (uniqueIds.length > 0) {
-            const idsString = uniqueIds.join(',');
-            console.log('Fetching images for IDs:', idsString);
+          if (frameIds.length > 0) {
+            console.log('Frame IDs for image fetching:', frameIds.length);
             
-            fetch(`https://api.figma.com/v1/images/${fileId}?ids=${idsString}&format=png&scale=1`, {
-              method: 'GET',
-              headers: {
-                'X-Figma-Token': accessToken
+            // Fetch images in batches of 10 to avoid API limits
+            const batchSize = 10;
+            const batches = [];
+            for (let i = 0; i < frameIds.length; i += batchSize) {
+              batches.push(frameIds.slice(i, i + batchSize));
+            }
+            
+            console.log(`Fetching images in ${batches.length} batches`);
+            
+            // Process batches sequentially
+            const processBatch = async (batchIndex: number): Promise<void> => {
+              if (batchIndex >= batches.length) {
+                observer.next(components);
+                observer.complete();
+                return;
               }
-            })
-            .then(response => {
-              if (!response.ok) {
-                throw new Error(`Failed to fetch images: ${response.status}`);
-              }
-              return response.json();
-            })
-            .then(imageData => {
-              console.log('Image data received:', imageData);
-              // Update components with image URLs - try component ID first, then frame ID
-              components.forEach(component => {
-                let imageUrl = imageData.images[component.id];
-                if (!imageUrl && component.frameId) {
-                  imageUrl = imageData.images[component.frameId];
+              
+              const batch = batches[batchIndex];
+              const batchIdsString = batch.join(',');
+              console.log(`Processing batch ${batchIndex + 1}/${batches.length}:`, batchIdsString);
+              
+              try {
+                const response = await fetch(`https://api.figma.com/v1/images/${fileId}?ids=${batchIdsString}&format=png&scale=1`, {
+                  method: 'GET',
+                  headers: {
+                    'X-Figma-Token': accessToken
+                  }
+                });
+                
+                if (!response.ok) {
+                  console.warn(`Batch ${batchIndex + 1} failed with status ${response.status}, skipping...`);
+                  // Continue with next batch instead of failing completely
+                  await processBatch(batchIndex + 1);
+                  return;
                 }
                 
-                if (imageUrl) {
-                  component.preview.image = imageUrl;
-                  console.log(`Set image for component ${component.name}:`, imageUrl);
-                } else {
-                  console.log(`No image found for component ${component.name} (id: ${component.id}, frameId: ${component.frameId})`);
-                }
-              });
-              
-              observer.next(components);
-              observer.complete();
-            })
-            .catch(error => {
-              console.error('Error fetching component images:', error);
-              // Return components without images if image fetch fails
-              observer.next(components);
-              observer.complete();
-            });
+                const imageData = await response.json();
+                console.log(`Batch ${batchIndex + 1} image data:`, imageData);
+                
+                // Update components with image URLs from this batch
+                components.forEach(component => {
+                  if (component.frameId && imageData.images[component.frameId]) {
+                    component.preview.image = imageData.images[component.frameId];
+                    console.log(`Set image for component ${component.name}:`, component.preview.image);
+                  }
+                });
+                
+                // Process next batch
+                await processBatch(batchIndex + 1);
+              } catch (error) {
+                console.error(`Error in batch ${batchIndex + 1}:`, error);
+                // Continue with next batch
+                await processBatch(batchIndex + 1);
+              }
+            };
+            
+            // Start processing batches
+            processBatch(0);
           } else {
-            console.log('No IDs found for components');
+            console.log('No frame IDs found for components');
             observer.next(components);
             observer.complete();
           }
