@@ -71,31 +71,40 @@ export class EnhancedDesignSystemComponent implements OnInit, OnDestroy {
   loadData(): void {
     this.loading = true;
     this.error = null;
+    console.log('Starting to load data...');
 
     // Load files first
     this.figmaService.getFigmaFiles()
       .pipe(
         takeUntil(this.destroy$),
         switchMap(files => {
+          console.log('Files loaded:', files.length, files);
           this.figmaFiles = files;
           if (files.length > 0) {
             this.selectedFile = files[0]; // Select first file by default
+            console.log('Selected file:', this.selectedFile);
           }
+          console.log('Loading tokens...');
           return this.figmaService.getEnhancedTokens();
         }),
         switchMap(tokens => {
+          console.log('Tokens loaded:', tokens.length, tokens);
           this.enhancedTokens = tokens;
+          console.log('Loading components...');
           return this.figmaService.getEnhancedComponents();
         }),
         catchError(error => {
+          console.error('Error loading data:', error);
           this.error = 'Failed to load enhanced data: ' + error.message;
           return of(null);
         })
       )
       .subscribe(components => {
         if (components) {
+          console.log('Components loaded:', components.length, components);
           this.enhancedComponents = components;
         }
+        console.log('Data loading complete. Tokens:', this.enhancedTokens.length, 'Components:', this.enhancedComponents.length);
         this.loading = false;
       });
   }
@@ -122,32 +131,42 @@ export class EnhancedDesignSystemComponent implements OnInit, OnDestroy {
   // Filtering methods
   get filteredTokens(): EnhancedDesignToken[] {
     let tokens = this.enhancedTokens;
+    console.log('Filtering tokens. Total tokens:', tokens.length);
 
     // Filter by file
     if (this.selectedFile) {
+      const beforeFileFilter = tokens.length;
       tokens = tokens.filter(token => token.fileId === this.selectedFile!.id);
+      console.log(`File filter: ${beforeFileFilter} -> ${tokens.length} (fileId: ${this.selectedFile.id})`);
     }
 
     // Filter by type
     if (this.selectedTokenType !== 'all') {
+      const beforeTypeFilter = tokens.length;
       tokens = tokens.filter(token => token.type === this.selectedTokenType);
+      console.log(`Type filter: ${beforeTypeFilter} -> ${tokens.length} (type: ${this.selectedTokenType})`);
     }
 
     // Filter by category
     if (this.selectedTokenCategory !== 'all') {
+      const beforeCategoryFilter = tokens.length;
       tokens = tokens.filter(token => token.category === this.selectedTokenCategory);
+      console.log(`Category filter: ${beforeCategoryFilter} -> ${tokens.length} (category: ${this.selectedTokenCategory})`);
     }
 
     // Filter by search term
     if (this.searchTerm) {
+      const beforeSearchFilter = tokens.length;
       const search = this.searchTerm.toLowerCase();
       tokens = tokens.filter(token => 
         token.name.toLowerCase().includes(search) ||
         token.description?.toLowerCase().includes(search) ||
         token.category.toLowerCase().includes(search)
       );
+      console.log(`Search filter: ${beforeSearchFilter} -> ${tokens.length} (search: ${this.searchTerm})`);
     }
 
+    console.log('Final filtered tokens:', tokens.length);
     return tokens;
   }
 
