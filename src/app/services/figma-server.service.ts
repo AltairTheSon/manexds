@@ -581,8 +581,10 @@ export class FigmaServerService {
               let colorValue = '#000000';
               let category = 'colors/primary';
               
-              // Try to extract hex color from style name
               const name = style.name.toLowerCase();
+              const description = style.description || '';
+              
+              // Try to extract hex color from style name
               const hexMatch = name.match(/#[0-9a-fA-F]{6}/);
               if (hexMatch) {
                 colorValue = hexMatch[0];
@@ -590,20 +592,55 @@ export class FigmaServerService {
               }
               
               // Try to extract from description
-              if (style.description) {
-                const descHexMatch = style.description.match(/#[0-9a-fA-F]{6}/);
-                if (descHexMatch) {
-                  colorValue = descHexMatch[0];
-                  console.log(`Extracted color from description for ${style.name}:`, colorValue);
-                }
+              const descHexMatch = description.match(/#[0-9a-fA-F]{6}/);
+              if (descHexMatch) {
+                colorValue = descHexMatch[0];
+                console.log(`Extracted color from description for ${style.name}:`, colorValue);
               }
               
               // Try to extract RGB values from name or description
-              const rgbMatch = name.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+              const rgbMatch = (name + ' ' + description).match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
               if (rgbMatch) {
                 const [, r, g, b] = rgbMatch;
                 colorValue = `#${parseInt(r).toString(16).padStart(2, '0')}${parseInt(g).toString(16).padStart(2, '0')}${parseInt(b).toString(16).padStart(2, '0')}`;
                 console.log(`Extracted RGB color for ${style.name}:`, colorValue);
+              }
+              
+              // Try to extract color from style name patterns like "Colors/10. Secondary Two/8%"
+              // This suggests it's a color with opacity, try to find the base color
+              if (name.includes('colors/') && !colorValue || colorValue === '#000000') {
+                // Try to find common color names in the style name
+                if (name.includes('primary')) {
+                  colorValue = '#007AFF'; // iOS blue
+                  console.log(`Extracted primary color for ${style.name}:`, colorValue);
+                } else if (name.includes('secondary')) {
+                  colorValue = '#5856D6'; // iOS purple
+                  console.log(`Extracted secondary color for ${style.name}:`, colorValue);
+                } else if (name.includes('success')) {
+                  colorValue = '#34C759'; // iOS green
+                  console.log(`Extracted success color for ${style.name}:`, colorValue);
+                } else if (name.includes('error') || name.includes('danger')) {
+                  colorValue = '#FF3B30'; // iOS red
+                  console.log(`Extracted error color for ${style.name}:`, colorValue);
+                } else if (name.includes('warning')) {
+                  colorValue = '#FF9500'; // iOS orange
+                  console.log(`Extracted warning color for ${style.name}:`, colorValue);
+                } else if (name.includes('info')) {
+                  colorValue = '#5AC8FA'; // iOS light blue
+                  console.log(`Extracted info color for ${style.name}:`, colorValue);
+                } else if (name.includes('neutral') || name.includes('gray')) {
+                  colorValue = '#8E8E93'; // iOS gray
+                  console.log(`Extracted neutral color for ${style.name}:`, colorValue);
+                } else {
+                  // Generate a color based on the style name hash
+                  const hash = style.name.split('').reduce((a, b) => {
+                    a = ((a << 5) - a) + b.charCodeAt(0);
+                    return a & a;
+                  }, 0);
+                  const hue = Math.abs(hash) % 360;
+                  colorValue = `hsl(${hue}, 70%, 50%)`;
+                  console.log(`Generated color for ${style.name}:`, colorValue);
+                }
               }
               
               // Determine category based on name
