@@ -606,40 +606,32 @@ export class FigmaServerService {
                 console.log(`Extracted RGB color for ${style.name}:`, colorValue);
               }
               
-              // Try to extract color from style name patterns like "Colors/10. Secondary Two/8%"
-              // This suggests it's a color with opacity, try to find the base color
-              if (name.includes('colors/') && !colorValue || colorValue === '#000000') {
-                // Try to find common color names in the style name
-                if (name.includes('primary')) {
-                  colorValue = '#007AFF'; // iOS blue
-                  console.log(`Extracted primary color for ${style.name}:`, colorValue);
-                } else if (name.includes('secondary')) {
-                  colorValue = '#5856D6'; // iOS purple
-                  console.log(`Extracted secondary color for ${style.name}:`, colorValue);
-                } else if (name.includes('success')) {
-                  colorValue = '#34C759'; // iOS green
-                  console.log(`Extracted success color for ${style.name}:`, colorValue);
-                } else if (name.includes('error') || name.includes('danger')) {
-                  colorValue = '#FF3B30'; // iOS red
-                  console.log(`Extracted error color for ${style.name}:`, colorValue);
-                } else if (name.includes('warning')) {
-                  colorValue = '#FF9500'; // iOS orange
-                  console.log(`Extracted warning color for ${style.name}:`, colorValue);
-                } else if (name.includes('info')) {
-                  colorValue = '#5AC8FA'; // iOS light blue
-                  console.log(`Extracted info color for ${style.name}:`, colorValue);
-                } else if (name.includes('neutral') || name.includes('gray')) {
-                  colorValue = '#8E8E93'; // iOS gray
-                  console.log(`Extracted neutral color for ${style.name}:`, colorValue);
+              // For now, use a simple approach - extract numbers from the style name to generate a color
+              // This is better than hardcoded colors that might not match your design system
+              if (colorValue === '#000000') {
+                // Extract numbers from the style name to create a deterministic color
+                const numbers = style.name.match(/\d+/g);
+                if (numbers && numbers.length > 0) {
+                  const num1 = parseInt(numbers[0]) || 0;
+                  const num2 = parseInt(numbers[1]) || 0;
+                  const num3 = parseInt(numbers[2]) || 0;
+                  
+                  // Create a color based on the numbers in the style name
+                  const r = (num1 * 7) % 256;
+                  const g = (num2 * 11) % 256;
+                  const b = (num3 * 13) % 256;
+                  
+                  colorValue = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+                  console.log(`Generated color for ${style.name}:`, colorValue, `(from numbers: ${num1}, ${num2}, ${num3})`);
                 } else {
-                  // Generate a color based on the style name hash
+                  // Fallback: use the style name hash
                   const hash = style.name.split('').reduce((a: number, b: string) => {
                     a = ((a << 5) - a) + b.charCodeAt(0);
                     return a & a;
                   }, 0);
                   const hue = Math.abs(hash) % 360;
                   colorValue = `hsl(${hue}, 70%, 50%)`;
-                  console.log(`Generated color for ${style.name}:`, colorValue);
+                  console.log(`Generated fallback color for ${style.name}:`, colorValue);
                 }
               }
               
@@ -797,8 +789,41 @@ export class FigmaServerService {
           });
         }
         
-        // For now, skip image fetching to focus on tokens first
-        console.log('Components loaded without images for now:', components.length);
+        // Generate simple placeholder images for components
+        if (components.length > 0) {
+          console.log('Generating placeholder images for components:', components.length);
+          
+          components.forEach((component, index) => {
+            // Create a simple SVG placeholder based on component dimensions
+            const width = component.absoluteBoundingBox.width || 100;
+            const height = component.absoluteBoundingBox.height || 100;
+            
+            // Generate a color based on component name
+            const hash = component.name.split('').reduce((a: number, b: string) => {
+              a = ((a << 5) - a) + b.charCodeAt(0);
+              return a & a;
+            }, 0);
+            const hue = Math.abs(hash) % 360;
+            const color = `hsl(${hue}, 70%, 60%)`;
+            
+            // Create SVG placeholder
+            const svg = `
+              <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+                <rect width="100%" height="100%" fill="${color}" opacity="0.8"/>
+                <rect width="100%" height="100%" fill="none" stroke="#333" stroke-width="2" opacity="0.3"/>
+                <text x="50%" y="50%" text-anchor="middle" dy="0.35em" font-family="Arial, sans-serif" font-size="12" fill="#333" opacity="0.7">${component.name}</text>
+              </svg>
+            `;
+            
+            // Convert SVG to data URL
+            const dataUrl = `data:image/svg+xml;base64,${btoa(svg)}`;
+            component.preview.image = dataUrl;
+            
+            console.log(`Generated placeholder for component ${component.name}:`, dataUrl.substring(0, 50) + '...');
+          });
+        }
+        
+        console.log('Components loaded with placeholder images:', components.length);
         observer.next(components);
         observer.complete();
       })
