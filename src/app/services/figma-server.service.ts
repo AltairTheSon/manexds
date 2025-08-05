@@ -571,150 +571,111 @@ export class FigmaServerService {
         
         // Extract tokens from styles
         if (data.styles) {
-          const styleIds = Object.keys(data.styles);
-          console.log('Found styles:', styleIds.length);
+          console.log('Found styles:', Object.keys(data.styles).length);
           
-          if (styleIds.length > 0) {
-            // Fetch style details to get actual color values
-            const styleIdsString = styleIds.join(',');
-            console.log('Fetching style details for:', styleIdsString);
+          Object.entries(data.styles).forEach(([styleId, style]: [string, any]) => {
+            console.log(`Processing style ${style.name}:`, style);
             
-            fetch(`https://api.figma.com/v1/styles?ids=${styleIdsString}`, {
-              method: 'GET',
-              headers: {
-                'X-Figma-Token': accessToken
-              }
-            })
-            .then(response => {
-              if (!response.ok) {
-                throw new Error(`Failed to fetch styles: ${response.status}`);
-              }
-              return response.json();
-            })
-            .then(styleData => {
-              console.log('Style data received:', styleData);
+            if (style.styleType === 'FILL') {
+              // Try to extract color value from style name or description
+              let colorValue = '#000000';
+              let category = 'colors/primary';
               
-              Object.entries(data.styles).forEach(([styleId, style]: [string, any]) => {
-                const styleDetail = styleData.meta?.styles?.[styleId];
-                console.log(`Processing style ${style.name}:`, styleDetail);
-                
-                if (style.styleType === 'FILL') {
-                  // Extract actual color value from style detail
-                  let colorValue = '#000000';
-                  let category = 'colors/primary';
-                  
-                  if (styleDetail?.fills && styleDetail.fills.length > 0) {
-                    const fill = styleDetail.fills[0];
-                    if (fill.type === 'SOLID' && fill.color) {
-                      const { r, g, b } = fill.color;
-                      colorValue = `#${Math.round(r * 255).toString(16).padStart(2, '0')}${Math.round(g * 255).toString(16).padStart(2, '0')}${Math.round(b * 255).toString(16).padStart(2, '0')}`;
-                      console.log(`Extracted color for ${style.name}:`, colorValue);
-                    }
-                  }
-                  
-                  // Determine category based on name
-                  const name = style.name.toLowerCase();
-                  if (name.includes('primary')) category = 'colors/primary';
-                  else if (name.includes('secondary')) category = 'colors/secondary';
-                  else if (name.includes('neutral')) category = 'colors/neutral';
-                  else if (name.includes('semantic')) category = 'colors/semantic';
-                  else if (name.includes('background')) category = 'colors/background';
-                  else if (name.includes('text')) category = 'colors/text';
-                  else if (name.includes('success')) category = 'colors/semantic';
-                  else if (name.includes('error') || name.includes('danger')) category = 'colors/semantic';
-                  else if (name.includes('warning')) category = 'colors/semantic';
-                  else if (name.includes('info')) category = 'colors/semantic';
-                  
-                  tokens.push({
-                    id: styleId,
-                    name: style.name,
-                    type: 'color',
-                    value: colorValue,
-                    description: style.description || `Color style: ${style.name}`,
-                    category: category,
-                    fileId: fileId,
-                    styleId: styleId,
-                    usage: [],
-                    lastModified: new Date(style.updatedAt || Date.now()).toISOString()
-                  });
-                } else if (style.styleType === 'TEXT') {
-                  // Extract typography values from style detail
-                  let typographyValue = {
-                    fontSize: '16',
-                    fontFamily: 'Inter',
-                    fontWeight: '400'
-                  };
-                  
-                  if (styleDetail?.style) {
-                    const textStyle = styleDetail.style;
-                    typographyValue = {
-                      fontSize: textStyle.fontSize?.toString() || '16',
-                      fontFamily: textStyle.fontFamily || 'Inter',
-                      fontWeight: textStyle.fontWeight?.toString() || '400'
-                    };
-                  }
-                  
-                  tokens.push({
-                    id: styleId,
-                    name: style.name,
-                    type: 'typography',
-                    value: typographyValue,
-                    description: style.description || `Typography style: ${style.name}`,
-                    category: 'typography/body',
-                    fileId: fileId,
-                    styleId: styleId,
-                    usage: [],
-                    lastModified: new Date(style.updatedAt || Date.now()).toISOString()
-                  });
-                }
-              });
+              // Try to extract hex color from style name
+              const name = style.name.toLowerCase();
+              const hexMatch = name.match(/#[0-9a-fA-F]{6}/);
+              if (hexMatch) {
+                colorValue = hexMatch[0];
+                console.log(`Extracted color from name for ${style.name}:`, colorValue);
+              }
               
-              observer.next(tokens);
-              observer.complete();
-            })
-            .catch(error => {
-              console.error('Error fetching style details:', error);
-              // Fallback to basic token creation without actual values
-              Object.entries(data.styles).forEach(([styleId, style]: [string, any]) => {
-                if (style.styleType === 'FILL') {
-                  tokens.push({
-                    id: styleId,
-                    name: style.name,
-                    type: 'color',
-                    value: '#000000', // Fallback
-                    description: style.description || `Color style: ${style.name}`,
-                    category: 'colors/primary',
-                    fileId: fileId,
-                    styleId: styleId,
-                    usage: [],
-                    lastModified: new Date(style.updatedAt || Date.now()).toISOString()
-                  });
-                } else if (style.styleType === 'TEXT') {
-                  tokens.push({
-                    id: styleId,
-                    name: style.name,
-                    type: 'typography',
-                    value: { fontSize: '16', fontFamily: 'Inter', fontWeight: '400' },
-                    description: style.description || `Typography style: ${style.name}`,
-                    category: 'typography/body',
-                    fileId: fileId,
-                    styleId: styleId,
-                    usage: [],
-                    lastModified: new Date(style.updatedAt || Date.now()).toISOString()
-                  });
+              // Try to extract from description
+              if (style.description) {
+                const descHexMatch = style.description.match(/#[0-9a-fA-F]{6}/);
+                if (descHexMatch) {
+                  colorValue = descHexMatch[0];
+                  console.log(`Extracted color from description for ${style.name}:`, colorValue);
                 }
+              }
+              
+              // Try to extract RGB values from name or description
+              const rgbMatch = name.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+              if (rgbMatch) {
+                const [, r, g, b] = rgbMatch;
+                colorValue = `#${parseInt(r).toString(16).padStart(2, '0')}${parseInt(g).toString(16).padStart(2, '0')}${parseInt(b).toString(16).padStart(2, '0')}`;
+                console.log(`Extracted RGB color for ${style.name}:`, colorValue);
+              }
+              
+              // Determine category based on name
+              if (name.includes('primary')) category = 'colors/primary';
+              else if (name.includes('secondary')) category = 'colors/secondary';
+              else if (name.includes('neutral')) category = 'colors/neutral';
+              else if (name.includes('semantic')) category = 'colors/semantic';
+              else if (name.includes('background')) category = 'colors/background';
+              else if (name.includes('text')) category = 'colors/text';
+              else if (name.includes('success')) category = 'colors/semantic';
+              else if (name.includes('error') || name.includes('danger')) category = 'colors/semantic';
+              else if (name.includes('warning')) category = 'colors/semantic';
+              else if (name.includes('info')) category = 'colors/semantic';
+              
+              tokens.push({
+                id: styleId,
+                name: style.name,
+                type: 'color',
+                value: colorValue,
+                description: style.description || `Color style: ${style.name}`,
+                category: category,
+                fileId: fileId,
+                styleId: styleId,
+                usage: [],
+                lastModified: new Date(style.updatedAt || Date.now()).toISOString()
               });
-              observer.next(tokens);
-              observer.complete();
-            });
-          } else {
-            observer.next(tokens);
-            observer.complete();
-          }
-        } else {
-          observer.next(tokens);
-          observer.complete();
+            } else if (style.styleType === 'TEXT') {
+              // Extract typography values from style name or description
+              let typographyValue = {
+                fontSize: '16',
+                fontFamily: 'Inter',
+                fontWeight: '400'
+              };
+              
+              const name = style.name.toLowerCase();
+              const description = style.description || '';
+              
+              // Try to extract font size
+              const fontSizeMatch = (name + ' ' + description).match(/(\d+)px/);
+              if (fontSizeMatch) {
+                typographyValue.fontSize = fontSizeMatch[1];
+              }
+              
+              // Try to extract font family
+              if (name.includes('inter') || description.includes('inter')) typographyValue.fontFamily = 'Inter';
+              else if (name.includes('roboto') || description.includes('roboto')) typographyValue.fontFamily = 'Roboto';
+              else if (name.includes('arial') || description.includes('arial')) typographyValue.fontFamily = 'Arial';
+              else if (name.includes('helvetica') || description.includes('helvetica')) typographyValue.fontFamily = 'Helvetica';
+              
+              // Try to extract font weight
+              if (name.includes('bold') || description.includes('bold')) typographyValue.fontWeight = '700';
+              else if (name.includes('medium') || description.includes('medium')) typographyValue.fontWeight = '500';
+              else if (name.includes('light') || description.includes('light')) typographyValue.fontWeight = '300';
+              
+              tokens.push({
+                id: styleId,
+                name: style.name,
+                type: 'typography',
+                value: typographyValue,
+                description: style.description || `Typography style: ${style.name}`,
+                category: 'typography/body',
+                fileId: fileId,
+                styleId: styleId,
+                usage: [],
+                lastModified: new Date(style.updatedAt || Date.now()).toISOString()
+              });
+            }
+          });
         }
+        
+        observer.next(tokens);
+        observer.complete();
       })
       .catch(error => {
         console.error('Error fetching tokens:', error);
