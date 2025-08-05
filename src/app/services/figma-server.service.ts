@@ -571,76 +571,150 @@ export class FigmaServerService {
         
         // Extract tokens from styles
         if (data.styles) {
-          Object.entries(data.styles).forEach(([styleId, style]: [string, any]) => {
-            if (style.styleType === 'FILL') {
-              // Try to extract color value from style description or name
-              let colorValue = '#000000';
-              let category = 'colors/primary';
-              
-              // Parse color from style name or description
-              if (style.description) {
-                const colorMatch = style.description.match(/#[0-9a-fA-F]{6}/);
-                if (colorMatch) {
-                  colorValue = colorMatch[0];
-                }
+          const styleIds = Object.keys(data.styles);
+          console.log('Found styles:', styleIds.length);
+          
+          if (styleIds.length > 0) {
+            // Fetch style details to get actual color values
+            const styleIdsString = styleIds.join(',');
+            console.log('Fetching style details for:', styleIdsString);
+            
+            fetch(`https://api.figma.com/v1/styles?ids=${styleIdsString}`, {
+              method: 'GET',
+              headers: {
+                'X-Figma-Token': accessToken
               }
-              
-              // Try to extract from style name patterns
-              const name = style.name.toLowerCase();
-              if (name.includes('#')) {
-                const hexMatch = name.match(/#[0-9a-fA-F]{6}/);
-                if (hexMatch) {
-                  colorValue = hexMatch[0];
-                }
+            })
+            .then(response => {
+              if (!response.ok) {
+                throw new Error(`Failed to fetch styles: ${response.status}`);
               }
+              return response.json();
+            })
+            .then(styleData => {
+              console.log('Style data received:', styleData);
               
-              // Determine category based on name
-              if (name.includes('primary')) category = 'colors/primary';
-              else if (name.includes('secondary')) category = 'colors/secondary';
-              else if (name.includes('neutral')) category = 'colors/neutral';
-              else if (name.includes('semantic')) category = 'colors/semantic';
-              else if (name.includes('background')) category = 'colors/background';
-              else if (name.includes('text')) category = 'colors/text';
-              else if (name.includes('success')) category = 'colors/semantic';
-              else if (name.includes('error') || name.includes('danger')) category = 'colors/semantic';
-              else if (name.includes('warning')) category = 'colors/semantic';
-              else if (name.includes('info')) category = 'colors/semantic';
+              Object.entries(data.styles).forEach(([styleId, style]: [string, any]) => {
+                const styleDetail = styleData.meta?.styles?.[styleId];
+                console.log(`Processing style ${style.name}:`, styleDetail);
+                
+                if (style.styleType === 'FILL') {
+                  // Extract actual color value from style detail
+                  let colorValue = '#000000';
+                  let category = 'colors/primary';
+                  
+                  if (styleDetail?.fills && styleDetail.fills.length > 0) {
+                    const fill = styleDetail.fills[0];
+                    if (fill.type === 'SOLID' && fill.color) {
+                      const { r, g, b } = fill.color;
+                      colorValue = `#${Math.round(r * 255).toString(16).padStart(2, '0')}${Math.round(g * 255).toString(16).padStart(2, '0')}${Math.round(b * 255).toString(16).padStart(2, '0')}`;
+                      console.log(`Extracted color for ${style.name}:`, colorValue);
+                    }
+                  }
+                  
+                  // Determine category based on name
+                  const name = style.name.toLowerCase();
+                  if (name.includes('primary')) category = 'colors/primary';
+                  else if (name.includes('secondary')) category = 'colors/secondary';
+                  else if (name.includes('neutral')) category = 'colors/neutral';
+                  else if (name.includes('semantic')) category = 'colors/semantic';
+                  else if (name.includes('background')) category = 'colors/background';
+                  else if (name.includes('text')) category = 'colors/text';
+                  else if (name.includes('success')) category = 'colors/semantic';
+                  else if (name.includes('error') || name.includes('danger')) category = 'colors/semantic';
+                  else if (name.includes('warning')) category = 'colors/semantic';
+                  else if (name.includes('info')) category = 'colors/semantic';
+                  
+                  tokens.push({
+                    id: styleId,
+                    name: style.name,
+                    type: 'color',
+                    value: colorValue,
+                    description: style.description || `Color style: ${style.name}`,
+                    category: category,
+                    fileId: fileId,
+                    styleId: styleId,
+                    usage: [],
+                    lastModified: new Date(style.updatedAt || Date.now()).toISOString()
+                  });
+                } else if (style.styleType === 'TEXT') {
+                  // Extract typography values from style detail
+                  let typographyValue = {
+                    fontSize: '16',
+                    fontFamily: 'Inter',
+                    fontWeight: '400'
+                  };
+                  
+                  if (styleDetail?.style) {
+                    const textStyle = styleDetail.style;
+                    typographyValue = {
+                      fontSize: textStyle.fontSize?.toString() || '16',
+                      fontFamily: textStyle.fontFamily || 'Inter',
+                      fontWeight: textStyle.fontWeight?.toString() || '400'
+                    };
+                  }
+                  
+                  tokens.push({
+                    id: styleId,
+                    name: style.name,
+                    type: 'typography',
+                    value: typographyValue,
+                    description: style.description || `Typography style: ${style.name}`,
+                    category: 'typography/body',
+                    fileId: fileId,
+                    styleId: styleId,
+                    usage: [],
+                    lastModified: new Date(style.updatedAt || Date.now()).toISOString()
+                  });
+                }
+              });
               
-              tokens.push({
-                id: styleId,
-                name: style.name,
-                type: 'color',
-                value: colorValue,
-                description: style.description || `Color style: ${style.name}`,
-                category: category,
-                fileId: fileId,
-                styleId: styleId,
-                usage: [],
-                lastModified: new Date(style.updatedAt || Date.now()).toISOString()
+              observer.next(tokens);
+              observer.complete();
+            })
+            .catch(error => {
+              console.error('Error fetching style details:', error);
+              // Fallback to basic token creation without actual values
+              Object.entries(data.styles).forEach(([styleId, style]: [string, any]) => {
+                if (style.styleType === 'FILL') {
+                  tokens.push({
+                    id: styleId,
+                    name: style.name,
+                    type: 'color',
+                    value: '#000000', // Fallback
+                    description: style.description || `Color style: ${style.name}`,
+                    category: 'colors/primary',
+                    fileId: fileId,
+                    styleId: styleId,
+                    usage: [],
+                    lastModified: new Date(style.updatedAt || Date.now()).toISOString()
+                  });
+                } else if (style.styleType === 'TEXT') {
+                  tokens.push({
+                    id: styleId,
+                    name: style.name,
+                    type: 'typography',
+                    value: { fontSize: '16', fontFamily: 'Inter', fontWeight: '400' },
+                    description: style.description || `Typography style: ${style.name}`,
+                    category: 'typography/body',
+                    fileId: fileId,
+                    styleId: styleId,
+                    usage: [],
+                    lastModified: new Date(style.updatedAt || Date.now()).toISOString()
+                  });
+                }
               });
-            } else if (style.styleType === 'TEXT') {
-              tokens.push({
-                id: styleId,
-                name: style.name,
-                type: 'typography',
-                value: {
-                  fontSize: style.description?.match(/font-size:\s*(\d+)/)?.[1] || '16',
-                  fontFamily: style.description?.match(/font-family:\s*([^;]+)/)?.[1] || 'Inter',
-                  fontWeight: style.description?.match(/font-weight:\s*(\d+)/)?.[1] || '400'
-                },
-                description: style.description || `Typography style: ${style.name}`,
-                category: 'typography/body',
-                fileId: fileId,
-                styleId: styleId,
-                usage: [],
-                lastModified: new Date(style.updatedAt || Date.now()).toISOString()
-              });
-            }
-          });
+              observer.next(tokens);
+              observer.complete();
+            });
+          } else {
+            observer.next(tokens);
+            observer.complete();
+          }
+        } else {
+          observer.next(tokens);
+          observer.complete();
         }
-        
-        observer.next(tokens);
-        observer.complete();
       })
       .catch(error => {
         console.error('Error fetching tokens:', error);
